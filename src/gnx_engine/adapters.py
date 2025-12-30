@@ -8,16 +8,22 @@ from langchain_core.language_models import BaseChatModel
 logging.basicConfig(
     filename='app0.log',
     level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    force=True
 )
 logger = logging.getLogger(__name__)
 
+# Import display functions for live output
+from src.ui.display import print_tool_call, print_tool_result, console
+
 class ReActAdapter:
     """
-    Wraps a ChatModel to support ReAct-style prompting while mimicking native tool calling.
-    Required for models like Gemma 3 that don't support native function calling but must be used with
-    agent frameworks like DeepAgents/LangGraph that expect it.
+    Wraps a ChatModel to support ReAct-style prompting with actual tool execution.
+    Required for models like Gemma 3 that don't support native function calling.
+    This adapter handles the complete ReAct loop: parse output, execute tools, loop until final answer.
     """
+    MAX_ITERATIONS = 10  # Prevent infinite loops
+    
     def __init__(self, model: BaseChatModel):
         self.model = model
         self.tools = []
@@ -25,55 +31,96 @@ class ReActAdapter:
         
     def bind_tools(self, tools, **kwargs):
         """Intercept tool binding and store tools for prompt generation."""
-        print(f"DEBUG: ReActAdapter.bind_tools called with {len(tools)} tools")
+        logger.debug(f"ReActAdapter.bind_tools called with {len(tools)} tools")
         self.tools = tools
+        self.tool_map = {}
         for t in tools:
             name = getattr(t, "name", str(t))
             self.tool_map[name] = t
+            logger.debug(f"Registered tool: {name}")
         return self
         
     def bind(self, *args, **kwargs):
-        print(f"DEBUG: ReActAdapter.bind called with args={args} kwargs={kwargs.keys()}")
-        # Check if tools are being bound here
+        logger.debug(f"ReActAdapter.bind called with args={args} kwargs={kwargs.keys()}")
         if "tools" in kwargs or "functions" in kwargs:
-             print("DEBUG: Intercepting tools in bind()")
-             if "tools" in kwargs:
-                 self.bind_tools(kwargs.pop("tools"))
+            logger.debug("Intercepting tools in bind()")
+            if "tools" in kwargs:
+                self.bind_tools(kwargs.pop("tools"))
         return self
 
     def __getattr__(self, name):
         return getattr(self.model, name)
-
-    def invoke(self, input, **kwargs):
-        print(f"DEBUG: ReActAdapter.invoke called. Kwargs keys: {list(kwargs.keys())}")
-        # 1. Extract messages from input
-        messages = input if isinstance(input, list) else input.get("messages", [])
+    
+    def _parse_react_output(self, content: str):
+        """Parse ReAct output to extract action and action input."""
+        # Pattern to match Action: tool_name and Action Input: {...}
+        action_pattern = re.compile(
+            r"Action:\s*([^\n]+)\s*\nAction Input:\s*(.*?)(?=\n\n|$)", 
+            re.DOTALL | re.IGNORECASE
+        )
+        match = action_pattern.search(content)
         
-        # Log message types
-        msg_types = [type(m).__name__ for m in messages]
-        print(f"DEBUG: Input message types: {msg_types}")
+        if match:
+            action_name = match.group(1).strip()
+            action_input_str = match.group(2).strip()
+            
+            # Skip if action is None or empty
+            if action_name.lower() in ['none', 'n/a', ''] or not action_name:
+                logger.debug(f"Skipping None/empty action")
+                return None, None
+            
+            # Clean up potential markdown or extra chars
+            action_input_str = action_input_str.strip('`').strip()
+            if action_input_str.startswith('json'):
+                action_input_str = action_input_str[4:].strip()
+            
+            logger.debug(f"Parsed action: {action_name}, input: {action_input_str}")
+            
+            try:
+                args = json.loads(action_input_str)
+            except json.JSONDecodeError:
+                # Try to fix common JSON issues or treat as single string arg
+                logger.debug(f"JSON parse failed, attempting recovery")
+                args = {"input": action_input_str}
+            
+            # Fix paths: remove leading slash for relative paths
+            if 'path' in args and isinstance(args['path'], str):
+                path = args['path']
+                # Remove leading / for relative paths (common mistake)
+                if path.startswith('/') and not path.startswith('//'):
+                    args['path'] = path.lstrip('/')
+                    logger.debug(f"Fixed path: {path} -> {args['path']}")
+                
+            return action_name, args
         
-        # 2. Inject ReAct system prompt if we have tools and no system message exists
-        if self.tools and not any(isinstance(m, SystemMessage) and "Available Tools:" in m.content for m in messages):
-            print("DEBUG: Injecting ReAct system prompt")
-            tool_desc = "\n".join([f"- {t.name}: {t.description}" for t in self.tools])
-            react_prompt = (
-                f"You have access to the following tools:\n{tool_desc}\n\n"
-                "To use a tool, you MUST use the following format:\n"
-                "Thought: your reasoning here\n"
-                "Action: [tool_name]\n"
-                "Action Input: [json string of arguments]\n\n"
-                "If you do not need to use a tool, output the final answer directly.\n"
-                "Example:\n"
-                "Thought: I need to list files.\n"
-                "Action: ls\n"
-                "Action Input: {}\n"
-            )
-            # Prepend SystemMessage
-            messages = [SystemMessage(content=react_prompt)] + messages
+        return None, None
+    
+    def _execute_tool(self, tool_name: str, args: dict) -> str:
+        """Execute a tool and return its result."""
+        logger.debug(f"Executing tool: {tool_name} with args: {args}")
         
-        # 3. Convert SystemMessage to HumanMessage for Gemma 3, and ToolMessage to HumanMessage
-        # Gemma 3 doesn't support 'Developer instruction' (SystemMessage) or ToolMessage
+        if tool_name not in self.tool_map:
+            error_msg = f"Unknown tool: {tool_name}. Available tools: {list(self.tool_map.keys())}"
+            logger.error(error_msg)
+            return error_msg
+        
+        tool = self.tool_map[tool_name]
+        
+        try:
+            # LangChain tools can be invoked with .invoke() or called directly
+            if hasattr(tool, 'invoke'):
+                result = tool.invoke(args)
+            else:
+                result = tool(**args)
+            logger.debug(f"Tool result: {result[:200] if len(str(result)) > 200 else result}")
+            return str(result)
+        except Exception as e:
+            error_msg = f"Error executing {tool_name}: {e}"
+            logger.error(error_msg)
+            return error_msg
+    
+    def _build_messages_for_gemma(self, messages: list) -> list:
+        """Convert messages to Gemma-compatible format (no SystemMessage)."""
         final_messages = []
         system_content = ""
         
@@ -81,39 +128,125 @@ class ReActAdapter:
             if isinstance(m, SystemMessage):
                 system_content += m.content + "\n\n"
             elif isinstance(m, ToolMessage):
-                # Convert tool result message to human message so Gemma can process it
-                tool_result = f"Tool Result ({m.name}): {m.content}"
+                # Convert tool result to human message
+                tool_result = f"Observation: {m.content}"
                 final_messages.append(HumanMessage(content=tool_result))
             else:
                 final_messages.append(m)
         
         if system_content:
-            # Prepend to first HumanMessage if it exists
             if final_messages and isinstance(final_messages[0], HumanMessage):
-                # We need to create a NEW message to avoid mutating original
                 original_first = final_messages[0]
                 new_first = HumanMessage(content=system_content + str(original_first.content))
                 final_messages[0] = new_first
             else:
-                # No HumanMessage? Just add as HumanMessage
                 final_messages.insert(0, HumanMessage(content=system_content))
         
-        # 4. Strip ALL tool and function-calling related kwargs that might trigger API errors
-        # DeepAgents/LangGraph might pass various tool-related parameters
+        return final_messages
+
+    def invoke(self, input, **kwargs):
+        logger.debug(f"ReActAdapter.invoke called. Kwargs keys: {list(kwargs.keys())}")
+        
+        # Extract messages from input
+        messages = input if isinstance(input, list) else input.get("messages", [])
+        
+        msg_types = [type(m).__name__ for m in messages]
+        logger.debug(f"Input message types: {msg_types}")
+        
+        # Build the ReAct system prompt
+        if self.tools:
+            tool_desc = "\n".join([f"- {t.name}: {t.description}" for t in self.tools])
+            react_prompt = (
+                f"You are a helpful AI assistant with access to tools.\n\n"
+                f"Available Tools:\n{tool_desc}\n\n"
+                "When you need to use a tool, you MUST respond in this exact format:\n"
+                "Thought: [your reasoning about what to do]\n"
+                "Action: [exact tool name from the list above]\n"
+                "Action Input: [valid JSON object with the tool's parameters]\n\n"
+                "After receiving an Observation (tool result), continue reasoning.\n"
+                "When you have the final answer and don't need more tools, just provide your response WITHOUT any Action or Action Input lines.\n\n"
+                "CRITICAL RULES:\n"
+                "1. NEVER use Action: None - just provide your answer directly without Action/Action Input\n"
+                "2. Use RELATIVE paths (e.g., 'file.txt' or './folder/file.txt'), NOT absolute paths starting with /\n"
+                "3. Use the exact parameter names from the tool descriptions\n\n"
+                "Examples:\n"
+                "- ls tool: Action Input: {\"path\": \".\"}\n"
+                "- read_file tool: Action Input: {\"path\": \"main.py\"}\n"
+                "- read_file for subfolder: Action Input: {\"path\": \"src/engine.py\"}\n"
+                "- write_file tool: Action Input: {\"path\": \"test.txt\", \"content\": \"hello\"}\n"
+            )
+            messages = [SystemMessage(content=react_prompt)] + list(messages)
+        
+        # Strip tool-related kwargs
         for key in list(kwargs.keys()):
             if any(x in key.lower() for x in ['tool', 'function', 'bind', 'tool_choice']):
                 kwargs.pop(key, None)
         
-        print(f"DEBUG: Calling model.invoke. Kwargs keys after strip: {list(kwargs.keys())}")
+        # ReAct loop
+        iteration = 0
+        conversation = list(messages)
         
-        # 5. Call the real model
-        try:
-            response = self.model.invoke(final_messages, **kwargs)
-        except Exception as e:
-            print(f"DEBUG: Model invoke failed: {e}")
-            raise e
+        while iteration < self.MAX_ITERATIONS:
+            iteration += 1
+            logger.debug(f"ReAct iteration {iteration}")
+            
+            # Convert to Gemma-compatible format
+            gemma_messages = self._build_messages_for_gemma(conversation)
+            
+            # Call the model with spinner animation
+            try:
+                with console.status("[bold cyan]  thinking...[/bold cyan]", spinner="dots"):
+                    response = self.model.invoke(gemma_messages, **kwargs)
+            except Exception as e:
+                logger.error(f"Model invoke failed: {e}")
+                raise e
+            
+            content = response.content
+            logger.debug(f"Model response: {content[:300]}...")
+            
+            # Parse for tool call
+            action_name, action_args = self._parse_react_output(content)
+            
+            if action_name:
+                # Print tool call LIVE
+                args_str = json.dumps(action_args) if action_args else "{}"
+                print_tool_call(action_name, args_str)
+                
+                # Execute the tool
+                tool_result = self._execute_tool(action_name, action_args)
+                
+                # Print tool result LIVE
+                print_tool_result(tool_result)
+                
+                # Add AI response and tool result to conversation
+                conversation.append(AIMessage(content=content))
+                conversation.append(HumanMessage(content=f"Observation: {tool_result}"))
+                
+                logger.debug(f"Tool executed, continuing loop")
+            else:
+                # No tool call - this is the final answer
+                logger.debug("No tool call detected, returning final response")
+                # Clean up the response - remove any ReAct artifacts
+                response.content = self._clean_final_response(content)
+                return response
         
-        # 6. DO NOT set tool_calls on response - this triggers function calling mode in the API
-        # Instead, just return the response as-is with the ReAct content
-        # DeepAgents will parse the ReAct format from the content itself
+        # Max iterations reached
+        logger.warning(f"Max iterations ({self.MAX_ITERATIONS}) reached")
+        response.content = self._clean_final_response(response.content)
         return response
+    
+    def _clean_final_response(self, content: str) -> str:
+        """Remove ReAct formatting artifacts from final response."""
+        import re
+        
+        # Remove "Thought: ..." lines
+        content = re.sub(r'^Thought:.*?\n', '', content, flags=re.MULTILINE)
+        
+        # Remove "Action: ..." and "Action Input: ..." if present
+        content = re.sub(r'^Action:.*?\n', '', content, flags=re.MULTILINE)
+        content = re.sub(r'^Action Input:.*?\n', '', content, flags=re.MULTILINE | re.DOTALL)
+        
+        # Clean up excessive whitespace
+        content = re.sub(r'\n{3,}', '\n\n', content)
+        
+        return content.strip()

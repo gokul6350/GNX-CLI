@@ -1,0 +1,42 @@
+[
+  {
+    "task": "Test ls tool",
+    "completed": false
+  },
+  {
+    "task": "Test read_file tool",
+    "completed": false
+  },
+  {
+    "task": "Test write_file tool",
+    "completed": false
+  },
+  {
+    "task": "Test edit_file tool",
+    "completed": false
+  },
+  {
+    "task": "Test glob tool",
+    "completed": false
+  },
+  {
+    "task": "Test grep tool",
+    "completed": false
+  },
+  {
+    "task": "Test capture_screen tool",
+    "completed": false
+  },
+  {
+    "task": "Test write_todos tool",
+    "completed": false
+  },
+  {
+    "task": "Test read_todos tool",
+    "completed": false
+  },
+  {
+    "task": "Test mark_complete tool",
+    "completed": false
+  }
+]
