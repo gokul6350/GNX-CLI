@@ -46,7 +46,7 @@ desktop_screenshot.png
 mobile_screenshot.png
 desktop_last.png
 mobile_last.png
-*.png
+
 *.jpg
 *.jpeg
 
