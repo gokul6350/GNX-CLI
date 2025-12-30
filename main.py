@@ -5,6 +5,7 @@ import subprocess
 from rich.prompt import Prompt
 from src.gnx_engine.engine import GNXEngine
 from src.ui.display import show_banner, print_agent_response, print_error, console
+from src.utils.token_counter import create_token_report, count_messages_tokens
 
 CHATS_DIR = "saved_chats"
 
@@ -82,6 +83,7 @@ def handle_command(cmd_str, engine):
         table.add_row("/tools", "List all available tools")
         table.add_row("/clear", "Clear the screen")
         table.add_row("/history", "Show chat history length")
+        table.add_row("/tokens", "Show token usage & estimated costs")
         table.add_row("/reset", "Reset chat history")
         table.add_row("/save <name>", "Save current chat with a name")
         table.add_row("/resume <name>", "Resume a saved chat")
@@ -114,6 +116,8 @@ def handle_command(cmd_str, engine):
         resume_chat(engine, chat_name)
     elif cmd == "/chats":
         list_saved_chats()
+    elif cmd == "/tokens":
+        show_token_stats(engine)
     else:
         console.print(f"[red]Unknown command: {cmd}[/red]")
         console.print("[dim]Type /help for available commands[/dim]")
@@ -203,6 +207,17 @@ def list_saved_chats():
     console.print("[bold]Saved Chats:[/bold]")
     for chat in chats:
         console.print(f"  [cyan]• {chat}[/cyan]")
+
+
+def show_token_stats(engine):
+    """Show token usage statistics for current session."""
+    if not engine.chat_history:
+        console.print("[yellow]No messages in chat history.[/yellow]")
+        return
+    
+    token_count = count_messages_tokens(engine.chat_history)
+    report = create_token_report(engine.chat_history, "Current Session")
+    console.print(report)
 
 if __name__ == "__main__":
     main()

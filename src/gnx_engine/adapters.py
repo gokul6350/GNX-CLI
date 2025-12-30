@@ -168,12 +168,14 @@ class ReActAdapter:
                 "CRITICAL RULES:\n"
                 "1. NEVER use Action: None - just provide your answer directly without Action/Action Input\n"
                 "2. Use RELATIVE paths (e.g., 'file.txt' or './folder/file.txt'), NOT absolute paths starting with /\n"
-                "3. Use the exact parameter names from the tool descriptions\n\n"
+                "3. Use the exact parameter names from the tool descriptions\n"
+                "4. If user provides a specific URL or says 'fetch', use fetch_url tool to directly access that URL\n"
+                "5. Use web_search for general queries, use fetch_url when you have an exact URL to check\n\n"
                 "Examples:\n"
                 "- ls tool: Action Input: {\"path\": \".\"}\n"
                 "- read_file tool: Action Input: {\"path\": \"main.py\"}\n"
-                "- read_file for subfolder: Action Input: {\"path\": \"src/engine.py\"}\n"
-                "- write_file tool: Action Input: {\"path\": \"test.txt\", \"content\": \"hello\"}\n"
+                "- fetch_url tool: Action Input: {\"url\": \"example.com\"}\n"
+                "- web_search tool: Action Input: {\"query\": \"python tutorials\"}\n"
             )
             messages = [SystemMessage(content=react_prompt)] + list(messages)
         
@@ -240,11 +242,17 @@ class ReActAdapter:
         import re
         
         # Remove "Thought: ..." lines
-        content = re.sub(r'^Thought:.*?\n', '', content, flags=re.MULTILINE)
+        content = re.sub(r'^Thought:.*?\n?', '', content, flags=re.MULTILINE)
         
-        # Remove "Action: ..." and "Action Input: ..." if present
-        content = re.sub(r'^Action:.*?\n', '', content, flags=re.MULTILINE)
-        content = re.sub(r'^Action Input:.*?\n', '', content, flags=re.MULTILINE | re.DOTALL)
+        # Remove "Action: None" or "Action: none" lines (model bad habit)
+        content = re.sub(r'^Action:\s*[Nn]one\s*\n?', '', content, flags=re.MULTILINE)
+        
+        # Remove any other "Action: ..." and "Action Input: ..." if present
+        content = re.sub(r'^Action:.*?\n?', '', content, flags=re.MULTILINE)
+        content = re.sub(r'^Action Input:.*?\n?', '', content, flags=re.MULTILINE | re.DOTALL)
+        
+        # Remove "Observation: ..." lines that might leak through
+        content = re.sub(r'^Observation:.*?\n?', '', content, flags=re.MULTILINE)
         
         # Clean up excessive whitespace
         content = re.sub(r'\n{3,}', '\n\n', content)

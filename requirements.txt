@@ -1,5 +1,7 @@
 langchain
 langchain-google-genai
+langchain-community
 deepagents
 rich
 pillow
+duckduckgo-search

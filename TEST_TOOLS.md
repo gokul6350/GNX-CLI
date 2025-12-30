@@ -90,6 +90,30 @@ Expected: Marks item as completed in the TODO list.
 
 ---
 
+## 11. **web_search** - Quick web search
+```
+Search the web for latest Python 3.13 features
+```
+or
+```
+What is LangChain and how does it work?
+```
+Expected: Returns a summary of search results from DuckDuckGo.
+
+---
+
+## 12. **web_search_detailed** - Detailed web search with URLs
+```
+Search for top AI news today and give me the links
+```
+or
+```
+Find detailed information about React 19 new features
+```
+Expected: Returns detailed results with URLs, titles, and snippets.
+
+---
+
 ## Notes
 - All file paths are relative to the workspace root
 - Check app0.log for detailed execution logs
