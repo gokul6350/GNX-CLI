@@ -1,0 +1,68 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+app0.log
+
+# Screenshots and temp files
+desktop_screenshot.png
+mobile_screenshot.png
+desktop_last.png
+mobile_last.png
+*.png
+*.jpg
+*.jpeg
+
+# Test files
+test_file.txt
+test_output.txt
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+saved_chats/
+*.cache
+.pytest_cache/
+
+# Node modules (if any frontend)
+node_modules/
+package-lock.json

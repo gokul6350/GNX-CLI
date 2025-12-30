@@ -118,3 +118,146 @@ Expected: Returns detailed results with URLs, titles, and snippets.
 - All file paths are relative to the workspace root
 - Check app0.log for detailed execution logs
 - The ReAct adapter handles tool execution automatically
+
+---
+
+# Computer Use & Mobile Use Tools
+
+## Enabling the Tools
+
+To use computer/desktop or mobile control tools, start GNX with flags:
+
+```bash
+# Enable computer use only
+python main.py --computer-use
+python main.py -c
+
+# Enable mobile use only
+python main.py --mobile-use
+python main.py -m
+
+# Enable all tools
+python main.py --all-tools
+python main.py -a
+```
+
+---
+
+## Computer Use Tools
+
+### **computer_screenshot** - Capture desktop screenshot
+```
+Take a screenshot of my desktop
+```
+Expected: Captures current screen state, saves to desktop_screenshot.png
+
+### **computer_control** - Vision-based computer control
+```
+Click on the Start button
+```
+```
+Open calculator by clicking on it
+```
+```
+Click on the Chrome icon
+```
+Expected: Uses V_action vision model to identify and click UI elements.
+
+### **computer_type_text** - Type text
+```
+Type "hello world" 
+```
+Expected: Types text at current cursor position.
+
+### **computer_hotkey** - Press keyboard shortcuts
+```
+Press ctrl+c
+```
+```
+Press alt+tab
+```
+Expected: Executes the keyboard shortcut.
+
+### **computer_wait** - Wait for UI
+```
+Wait 3 seconds
+```
+Expected: Pauses execution for specified time.
+
+---
+
+## Mobile Use Tools (Requires ADB)
+
+### **mobile_devices** - List connected devices
+```
+List connected Android devices
+```
+Expected: Shows all devices connected via ADB.
+
+### **mobile_connect** - Connect to device
+```
+Connect to my phone
+```
+Expected: Connects to first available or specified device.
+
+### **mobile_screenshot** - Capture phone screen
+```
+Take a screenshot of my phone
+```
+Expected: Captures phone screen via ADB.
+
+### **mobile_control** - Vision-based mobile control
+```
+Tap on the Settings app
+```
+```
+Open WhatsApp
+```
+```
+Tap on the search bar
+```
+Expected: Uses V_action to identify and tap UI elements.
+
+### **mobile_type_text** - Type on phone
+```
+Type "hello" on my phone
+```
+Expected: Types text on the mobile device.
+
+### **mobile_swipe** - Swipe gestures
+```
+Swipe up to scroll
+```
+```
+Swipe down
+```
+Expected: Performs swipe gesture.
+
+### **mobile_button** - Press system buttons
+```
+Press the back button
+```
+```
+Press home
+```
+Expected: Presses specified system button.
+
+---
+
+## Example Workflows
+
+### Open Calculator on Desktop
+```
+1. Take a screenshot of the desktop
+2. Click on the Start button
+3. Type "calculator"
+4. Click on Calculator app
+```
+
+### Open Settings on Phone
+```
+1. List connected devices
+2. Connect to my phone
+3. Take a screenshot
+4. Tap on Settings icon
+```

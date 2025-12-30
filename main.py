@@ -13,13 +13,14 @@ def main():
     show_banner()
     
     # Ensure API Key
-    # Using the key provided in the prompt for demonstration
     if "GOOGLE_API_KEY" not in os.environ:
        os.environ["GOOGLE_API_KEY"] = "AIzaSyAZc84jW2KbLE2qFCas80BtaMftNA_18q8"
 
     try:
         engine = GNXEngine()
         console.print("[bold green]System Initialized. GNX Engine Online.[/bold green]")
+        console.print("[cyan]✓ Computer Use & Mobile Use tools enabled[/cyan]")
+            
     except Exception as e:
         print_error(f"Failed to initialize engine: {e}")
         return

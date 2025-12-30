@@ -8,18 +8,27 @@ from src.tools.search import glob, grep
 from src.tools.system import capture_screen
 from src.tools.todos import write_todos, read_todos, mark_complete
 from src.tools.web_search import web_search, web_search_detailed, fetch_url
+from src.tools.computer_use import COMPUTER_USE_TOOLS
+from src.tools.mobile_use import MOBILE_USE_TOOLS
 
 class GNXEngine:
     def __init__(self, model_name="gemma-3-27b-it", api_key=None):
         if api_key:
             os.environ["GOOGLE_API_KEY"] = api_key
         
+        # All tools including computer_use and mobile_use by default
         self.tools = [
             ls, read_file, write_file, edit_file, 
             glob, grep, capture_screen,
             write_todos, read_todos, mark_complete,
             web_search, web_search_detailed, fetch_url
         ]
+        
+        # Add computer use tools (desktop automation)
+        self.tools.extend(COMPUTER_USE_TOOLS)
+        
+        # Add mobile use tools (phone automation via ADB)
+        self.tools.extend(MOBILE_USE_TOOLS)
         
         # Initialize Gemma directly WITHOUT DeepAgents
         self.llm = ChatGoogleGenerativeAI(

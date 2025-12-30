@@ -5,3 +5,6 @@ deepagents
 rich
 pillow
 duckduckgo-search
+pyautogui
+mss
+openai
