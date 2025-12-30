@@ -163,7 +163,11 @@ Output:
 ✓ mobile_screenshot: Screen captured
 ✓ mobile_control: Tap on Settings icon
 ✓ Task completed: Settings app opened
+
+
 ```
+
+
 
 #### File Operations
 ```
@@ -379,43 +383,23 @@ MIT License - Feel free to use and modify
 
 ---
 
-## My Journey: From 2 Months of Struggle to 1 Day of Glory
+## My Journey: The Real Story
 
-### The Struggle (2 Months)
+I was trying to build this AI agent for the last 2 months. Kept switching between different languages - Rust, Python, C++, Node.js. Finally came back to Python and accomplished everything that took 2 months of work... in literally a single day.
 
-Two months ago, I started with an ambitious vision: build an AI agent that could understand natural language and execute real-world actions on desktop and mobile devices. Simple idea, right? Wrong.
+### What Happened
 
-I jumped between languages like a confused programmer on a caffeine high:
+I don't know if I should be proud of my skills or be sad about how easy it was. Like, I spent 2 months on this. But nah, I'm not going to be sad. I'm taking it as experience - that's why I was able to do it in a single day.
 
-**Month 1 - The Rust Phase**
-I thought, "Rust is fast, Rust is memory-safe, Rust will be perfect!" Spent 3 weeks learning Rust's borrow checker, fighting with lifetimes, and getting frustrated with the compiler. Built some basic tooling, but realized the ML ecosystem in Rust was... limited. Moved on.
+### The Reality
 
-**Month 1 - The C++ Interlude**
-"C++ has everything!" I said confidently. Revisited pointers, memory management, and build systems. Got 2 weeks in before realizing I was spending more time fighting CMake than writing agent logic. The vision was slipping away.
+Two months of switching languages, struggling with different ecosystems, hitting dead ends. Then one day, with Python and LangChain, everything just clicked:
 
-**Month 2 - Node.js Adventure**
-"JavaScript everywhere, right?" Tried building with TypeScript, set up the project, got halfway through tool orchestration before hitting the async/await wall and thinking about Python the entire time.
+- `computer_use.py` - boom, desktop automation done
+- `mobile_use.py` - boom, mobile control done  
+- Updated the ReAct adapter with proper instructions
+- Integrated everything
 
-**Month 2 - Back to Python (Reluctantly)**
-Finally admitted: Python is the king for this use case. LangChain, Gemini API, PIL, PyAutoGUI - everything just works. But I was burned out, thinking the project was doomed.
-
-### The Revelation (1 Day)
-
-Then something clicked. Instead of reinventing the wheel with different approaches in each language, I sat down with Python, pulled from what I learned in each language:
-
-- **Rust's rigor** → Proper error handling and type hints
-- **C++'s efficiency** → Optimized screenshot capture with MSS
-- **Node's async mindset** → Concurrent tool execution in ReAct loop
-- **Python's pragmatism** → Rapid iteration and integration
-
-Armed with 2 months of failed attempts and lessons learned, I built the entire system in one day:
-
-1. **computer_use.py** (2 hours) - Desktop automation with V_action integration
-2. **mobile_use.py** (2 hours) - Mobile automation via ADB
-3. **adapters.py updates** (1 hour) - ReAct workflow with detailed prompts
-4. **Integration & testing** (1 hour) - Everything working together
-
-By end of day:
 ```
 GNX: "Use computer use and open calculator"
 ✓ Screenshot captured
@@ -424,44 +408,24 @@ GNX: "Use computer use and open calculator"
 ✓ SUCCESS
 ```
 
-### The Reflection
+In one day.
 
-Should I be proud or sad?
+### The Truth
 
-**The Sad Part**: Wow, I wasted 2 months on dead ends and language exploration.
+Two months wasn't wasted. It was experience. Every failed attempt in Rust, every CMake fight in C++, every async confusion in Node.js - all of that taught me what works and what doesn't. When I sat down with Python, I already knew the patterns. I already understood the problem.
 
-**The Proud Part**: Those 2 months weren't wasted - they were *education*. Each language taught me different paradigms:
-- Rust taught me to think about ownership and safety
-- C++ taught me about performance and resources
-- Node taught me about async patterns and event-driven architecture
-- And all of that made my Python solution **better** and more thoughtful
+That's why it was so fast.
 
-The speed on Day 1 wasn't because Python is superior (though it is for this). It was because I had **tried and failed** in other contexts. I knew what wouldn't work. I knew the patterns that matter. I had built mental models across 4 different ecosystems.
-
-### The Real Lesson
-
-**Skills compound across languages.** The concepts:
-- Agent architecture
-- Tool orchestration
-- Vision-language model integration
-- Error handling
-- System design
-
-...these aren't Python-specific. I learned them through struggle in multiple languages. That struggle was the real education.
-
-So am I sad about wasting 2 months? No. Because I didn't waste them - I *invested* them. And that investment paid off with a system built thoughtfully, quickly, and with the wisdom of 4 different programming paradigms.
-
-To anyone reading this:
-- **Don't judge yourself for switching languages** while learning
-- **Each failure teaches you something** about different approaches
-- **The "wasted" time is actually compound interest** in your overall skill
-- **The speed comes not from the language, but from understanding the problem better**
-
-That's why I built in 1 day what took 2 months of scattered attempts.
-
-And honestly? That feels pretty good. 🚀
+I took those 2 months of experience and built something in a day. That's not stupid. That's just how it works when you finally know what you're doing.
 
 ---
 
-**Built with ❤️ and a lot of ☕**
+## 🔗 Part of LAMx Project
 
+![LAMx Logo](./imgs/LAMx.png)
+
+GNX CLI is a core component of the **LAMx** project - an integrated ecosystem for General AI-powered intelligence.
+
+---
+
+**Built with ❤️ after a lot of 💔**
