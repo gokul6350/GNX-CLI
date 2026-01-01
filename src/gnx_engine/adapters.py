@@ -5,6 +5,7 @@ import time
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage, ToolMessage
 from langchain_core.language_models import BaseChatModel
 from . import engine
+from .prompts import build_react_system_prompt
 # Configure logging to file
 logging.basicConfig(
     filename='app0.log',
@@ -156,145 +157,7 @@ class ReActAdapter:
         
         # Build the ReAct system prompt
         if self.tools:
-            tool_desc = "\n".join([f"- {t.name}: {t.description}" for t in self.tools])
-            
-            # Check if computer/mobile use tools are available
-            has_computer_use = "computer_control" in self.tool_map
-            has_mobile_use = "mobile_control" in self.tool_map
-            has_ui_automation = "ui_list_windows" in self.tool_map
-            
-            # Build special instructions for computer/mobile use
-            computer_use_instructions = ""
-            if has_computer_use:
-                computer_use_instructions = """
-COMPUTER USE INSTRUCTIONS (VERY IMPORTANT):
-When user asks to interact with the desktop, open apps, click things, or use "computer use":
-1. FIRST use computer_screenshot to see the current screen state
-2. Based on what you see, use computer_control with a natural language instruction describing what to click/interact with
-3. After each action, take another screenshot to verify the result
-4. Continue the loop until the goal is achieved
-
-Example workflow for "open calculator":
-Step 1: Take screenshot to see desktop
-  Action: computer_screenshot
-  Action Input: {}
-  
-Step 2: Click on Start button (or search icon)
-  Action: computer_control
-  Action Input: {"instruction": "Click on the Start button at the bottom left"}
-  
-Step 3: Take screenshot to see Start menu
-  Action: computer_screenshot
-  Action Input: {}
-  
-Step 4: Type calculator or click on it
-  Action: computer_control
-  Action Input: {"instruction": "Type calculator in the search box"}
-  
-Step 5: Click on Calculator app
-  Action: computer_control
-  Action Input: {"instruction": "Click on the Calculator app in the search results"}
-
-DO NOT use web_search for computer control tasks - use the computer_* tools!
-"""
-
-            mobile_use_instructions = ""
-            if has_mobile_use:
-                mobile_use_instructions = """
-MOBILE USE INSTRUCTIONS (VERY IMPORTANT):
-When user asks to interact with their phone, open mobile apps, or use "mobile use":
-1. FIRST use mobile_devices to check connected devices
-2. Use mobile_connect to connect to the device
-3. Use mobile_screenshot to see the current phone screen
-4. Based on what you see, use mobile_control with a natural language instruction
-5. After each action, take another screenshot to verify
-
-Example workflow for "open WhatsApp on phone":
-Step 1: Check devices
-    Action: mobile_devices
-    Action Input: {}
-
-Step 2: Connect to device
-    Action: mobile_connect
-    Action Input: {"device_id": ""}
-
-Step 3: Take screenshot
-    Action: mobile_screenshot
-    Action Input: {}
-
-Step 4: Tap on WhatsApp
-    Action: mobile_control
-    Action Input: {"instruction": "Tap on the WhatsApp icon"}
-
-DO NOT use web_search for mobile control tasks - use the mobile_* tools!
-"""
-
-            ui_automation_instructions = ""
-            if has_ui_automation:
-                ui_automation_instructions = """
-UI AUTOMATION INSTRUCTIONS (VERY IMPORTANT):
-When the user needs to navigate or interact with desktop UI elements directly, follow this flow:
-1. FIRST call ui_list_windows to see what top-level windows are available and capture their handles.
-2. If you need to inspect structure, use ui_scan_ui_tree with the desired window title (limit depth to keep responses concise).
-3. To activate controls, call ui_click_element or ui_type_into_element with the exact window title and element query.
-4. Use ui_capture_window_screenshot whenever you need a visual confirmation of the window state after actions.
-
-Example workflow for "click the Save button in Notepad":
-Step 1: List windows to confirm Notepad is open
-    Action: ui_list_windows
-    Action Input: {}
-
-Step 2: Inspect the UI tree if needed
-    Action: ui_scan_ui_tree
-    Action Input: {"window_title": "Notepad", "max_depth": 2}
-
-Step 3: Click the Save button
-    Action: ui_click_element
-    Action Input: {"window_title": "Notepad", "element_name": "Save"}
-
-Step 4: Capture a screenshot after clicking
-    Action: ui_capture_window_screenshot
-    Action Input: {"window_title": "Notepad"}
-
-DO NOT forget to cite the correct window title and element name when calling UI tools!
-"""
-
-            react_prompt = (
-                                f"You are a helpful AI assistant powered by GNX CLI, which is powered by the GNX ENGINE - "
-                f"a uniquely designed, cost-effective AI system using gemma-3-27b-it as the brain model and QwenVL-8B-it as the action model. "
-                f"Developed by Gokulbarath (https://gokulbarath.is-a.dev/)\n\n"
-                f"Available Tools:\n{tool_desc}\n\n"
-                "When you need to use a tool, you MUST respond in this exact format:\n"
-                "Thought: [your reasoning about what to do]\n"
-                "Action: [exact tool name from the list above]\n"
-                "Action Input: [valid JSON object with the tool's parameters]\n\n"
-                "After receiving an Observation (tool result), continue reasoning.\n"
-                "When you have the final answer and don't need more tools, just provide your response WITHOUT any Action or Action Input lines.\n\n"
-                f"{computer_use_instructions}"
-                f"{mobile_use_instructions}"
-                f"{ui_automation_instructions}"
-                "CRITICAL RULES:\n"
-                "1. NEVER use Action: None - just provide your answer directly without Action/Action Input\n"
-                "2. Use RELATIVE paths (e.g., 'file.txt' or './folder/file.txt'), NOT absolute paths starting with /\n"
-                "3. Use the exact parameter names from the tool descriptions\n"
-                "4. If user provides a specific URL or says 'fetch', use fetch_url tool to directly access that URL\n"
-                "5. Use web_search for general queries, use fetch_url when you have an exact URL to check\n"
-                "6. For computer/desktop tasks, use computer_screenshot and computer_control tools\n"
-                "7. For mobile/phone tasks, use mobile_screenshot and mobile_control tools\n\n"
-                "Examples:\n"
-                "- ls tool: Action Input: {\"path\": \".\"}\n"
-                "- read_file tool: Action Input: {\"path\": \"main.py\"}\n"
-                "- fetch_url tool: Action Input: {\"url\": \"example.com\"}\n"
-                "- web_search tool: Action Input: {\"query\": \"python tutorials\"}\n"
-                "- computer_screenshot tool: Action Input: {}\n"
-                "- computer_control tool: Action Input: {\"instruction\": \"Click on the Start button\"}\n"
-                "- mobile_control tool: Action Input: {\"instruction\": \"Tap on Settings app\"}\n"
-                "- ui_list_windows tool: Action Input: {}\n"
-                "- ui_scan_ui_tree tool: Action Input: {\"window_title\": \"Calculator\", \"max_depth\": 3}\n"
-                "- ui_click_element tool: Action Input: {\"window_title\": \"Calculator\", \"element_name\": \"Seven\"}\n"
-                "- ui_type_into_element tool: Action Input: {\"window_title\": \"Notepad\", \"element_name\": \"Text Editor\", \"text\": \"hello\"}\n"
-                "- ui_capture_window_screenshot tool: Action Input: {\"window_title\": \"Calculator\"}\n"
-            )
+            react_prompt = build_react_system_prompt(self.tools, self.tool_map)
             messages = [SystemMessage(content=react_prompt)] + list(messages)
         
         # Strip tool-related kwargs
