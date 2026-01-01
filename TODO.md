@@ -12,7 +12,7 @@
 4. **Long-Term Memory/Context:** Implement a persistent memory system (e.g., Vector Database or similar) to retain conversation history and user preferences. This will enable more personalized and efficient assistance.
 
 5. **Improved Reasoning & Planning:** Enhance reasoning capabilities to break down complex tasks into manageable steps and anticipate potential issues. This is crucial for handling multi-step requests.
-6. **Control a ROBOTIC ARM:** YES control a Robotic arm 
+6. **Control a ROBOTIC ARM:** YES control a Robotic arm     
 
 ## Low Priority
 

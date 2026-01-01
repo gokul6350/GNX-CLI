@@ -8,3 +8,4 @@ duckduckgo-search
 pyautogui
 mss
 openai
+pywinauto

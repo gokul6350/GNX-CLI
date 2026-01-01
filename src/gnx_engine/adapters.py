@@ -1,9 +1,10 @@
 import re
 import json
 import logging
+import time
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage, ToolMessage
 from langchain_core.language_models import BaseChatModel
-
+from . import engine
 # Configure logging to file
 logging.basicConfig(
     filename='app0.log',
@@ -160,6 +161,7 @@ class ReActAdapter:
             # Check if computer/mobile use tools are available
             has_computer_use = "computer_control" in self.tool_map
             has_mobile_use = "mobile_control" in self.tool_map
+            has_ui_automation = "ui_list_windows" in self.tool_map
             
             # Build special instructions for computer/mobile use
             computer_use_instructions = ""
@@ -209,26 +211,58 @@ When user asks to interact with their phone, open mobile apps, or use "mobile us
 
 Example workflow for "open WhatsApp on phone":
 Step 1: Check devices
-  Action: mobile_devices
-  Action Input: {}
+    Action: mobile_devices
+    Action Input: {}
 
-Step 2: Connect to device  
-  Action: mobile_connect
-  Action Input: {"device_id": ""}
-  
+Step 2: Connect to device
+    Action: mobile_connect
+    Action Input: {"device_id": ""}
+
 Step 3: Take screenshot
-  Action: mobile_screenshot
-  Action Input: {}
-  
+    Action: mobile_screenshot
+    Action Input: {}
+
 Step 4: Tap on WhatsApp
-  Action: mobile_control
-  Action Input: {"instruction": "Tap on the WhatsApp icon"}
+    Action: mobile_control
+    Action Input: {"instruction": "Tap on the WhatsApp icon"}
 
 DO NOT use web_search for mobile control tasks - use the mobile_* tools!
 """
 
+            ui_automation_instructions = ""
+            if has_ui_automation:
+                ui_automation_instructions = """
+UI AUTOMATION INSTRUCTIONS (VERY IMPORTANT):
+When the user needs to navigate or interact with desktop UI elements directly, follow this flow:
+1. FIRST call ui_list_windows to see what top-level windows are available and capture their handles.
+2. If you need to inspect structure, use ui_scan_ui_tree with the desired window title (limit depth to keep responses concise).
+3. To activate controls, call ui_click_element or ui_type_into_element with the exact window title and element query.
+4. Use ui_capture_window_screenshot whenever you need a visual confirmation of the window state after actions.
+
+Example workflow for "click the Save button in Notepad":
+Step 1: List windows to confirm Notepad is open
+    Action: ui_list_windows
+    Action Input: {}
+
+Step 2: Inspect the UI tree if needed
+    Action: ui_scan_ui_tree
+    Action Input: {"window_title": "Notepad", "max_depth": 2}
+
+Step 3: Click the Save button
+    Action: ui_click_element
+    Action Input: {"window_title": "Notepad", "element_name": "Save"}
+
+Step 4: Capture a screenshot after clicking
+    Action: ui_capture_window_screenshot
+    Action Input: {"window_title": "Notepad"}
+
+DO NOT forget to cite the correct window title and element name when calling UI tools!
+"""
+
             react_prompt = (
-                f"You are a helpful AI assistant with access to tools.\n\n"
+                                f"You are a helpful AI assistant powered by GNX CLI, which is powered by the GNX ENGINE - "
+                f"a uniquely designed, cost-effective AI system using gemma-3-27b-it as the brain model and QwenVL-8B-it as the action model. "
+                f"Developed by Gokulbarath (https://gokulbarath.is-a.dev/)\n\n"
                 f"Available Tools:\n{tool_desc}\n\n"
                 "When you need to use a tool, you MUST respond in this exact format:\n"
                 "Thought: [your reasoning about what to do]\n"
@@ -238,6 +272,7 @@ DO NOT use web_search for mobile control tasks - use the mobile_* tools!
                 "When you have the final answer and don't need more tools, just provide your response WITHOUT any Action or Action Input lines.\n\n"
                 f"{computer_use_instructions}"
                 f"{mobile_use_instructions}"
+                f"{ui_automation_instructions}"
                 "CRITICAL RULES:\n"
                 "1. NEVER use Action: None - just provide your answer directly without Action/Action Input\n"
                 "2. Use RELATIVE paths (e.g., 'file.txt' or './folder/file.txt'), NOT absolute paths starting with /\n"
@@ -254,6 +289,11 @@ DO NOT use web_search for mobile control tasks - use the mobile_* tools!
                 "- computer_screenshot tool: Action Input: {}\n"
                 "- computer_control tool: Action Input: {\"instruction\": \"Click on the Start button\"}\n"
                 "- mobile_control tool: Action Input: {\"instruction\": \"Tap on Settings app\"}\n"
+                "- ui_list_windows tool: Action Input: {}\n"
+                "- ui_scan_ui_tree tool: Action Input: {\"window_title\": \"Calculator\", \"max_depth\": 3}\n"
+                "- ui_click_element tool: Action Input: {\"window_title\": \"Calculator\", \"element_name\": \"Seven\"}\n"
+                "- ui_type_into_element tool: Action Input: {\"window_title\": \"Notepad\", \"element_name\": \"Text Editor\", \"text\": \"hello\"}\n"
+                "- ui_capture_window_screenshot tool: Action Input: {\"window_title\": \"Calculator\"}\n"
             )
             messages = [SystemMessage(content=react_prompt)] + list(messages)
         
@@ -265,6 +305,8 @@ DO NOT use web_search for mobile control tasks - use the mobile_* tools!
         # ReAct loop
         iteration = 0
         conversation = list(messages)
+        max_retries = 3
+        retry_count = 0
         
         while iteration < self.MAX_ITERATIONS:
             iteration += 1
@@ -273,13 +315,30 @@ DO NOT use web_search for mobile control tasks - use the mobile_* tools!
             # Convert to Gemma-compatible format
             gemma_messages = self._build_messages_for_gemma(conversation)
             
-            # Call the model with spinner animation
+            # Call the model with spinner animation and retry logic
             try:
                 with console.status("[bold cyan]  thinking...[/bold cyan]", spinner="dots"):
                     response = self.model.invoke(gemma_messages, **kwargs)
+                retry_count = 0  # Reset retry count on success
             except Exception as e:
-                logger.error(f"Model invoke failed: {e}")
-                raise e
+                error_str = str(e)
+                # Check if it's a rate limit error
+                if ("429" in error_str or "RESOURCE_EXHAUSTED" in error_str or 
+                    "quota" in error_str.lower() or "rate" in error_str.lower()):
+                    
+                    if retry_count < max_retries:
+                        retry_count += 1
+                        wait_time = 2 ** retry_count  # Exponential backoff: 2s, 4s, 8s
+                        logger.warning(f"Rate limit hit. Retry {retry_count}/{max_retries}, waiting {wait_time}s")
+                        console.print(f"[yellow]⚠️  Rate limit hit. Waiting {wait_time}s before retry... ({retry_count}/{max_retries})[/yellow]")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        logger.error(f"Max retries exceeded for rate limit: {e}")
+                        raise e
+                else:
+                    logger.error(f"Model invoke failed: {e}")
+                    raise e
             
             content = response.content
             logger.debug(f"Model response: {content[:300]}...")
