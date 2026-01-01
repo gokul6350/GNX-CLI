@@ -9,3 +9,6 @@ pyautogui
 mss
 openai
 pywinauto
+# MCP (Model Context Protocol) support
+mcp[cli]
+langchain-mcp-adapters

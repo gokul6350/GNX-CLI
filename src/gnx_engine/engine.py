@@ -1,3 +1,5 @@
+import asyncio
+import logging
 import os
 import time
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -14,12 +16,14 @@ from src.tools.mobile_use import MOBILE_USE_TOOLS
 from src.tools.ui_automation import UI_AUTOMATION_TOOLS
 from src.utils.token_counter import count_messages_tokens
 
+logger = logging.getLogger(__name__)
+
 class GNXEngine:
     # Free tier token limit: 15,000 tokens per minute for gemma-3-27b
     GEMMA_FREE_TIER_LIMIT = 15000
     TOKEN_RESET_INTERVAL = 60  # seconds
     
-    def __init__(self, model_name="gemma-3-27b-it", api_key=None):
+    def __init__(self, model_name="gemma-3-27b-it", api_key=None, load_mcp=True, mcp_config_path=None):
         self.model_name = model_name
         if api_key:
             os.environ["GOOGLE_API_KEY"] = api_key
@@ -43,6 +47,12 @@ class GNXEngine:
         # Add mobile use tools (phone automation via ADB)
         self.tools.extend(MOBILE_USE_TOOLS)
         
+        # MCP support
+        self.mcp_manager = None
+        self.mcp_tools = []
+        if load_mcp:
+            self._load_mcp_servers(mcp_config_path)
+        
         # Initialize Gemma directly WITHOUT DeepAgents
         self.llm = ChatGoogleGenerativeAI(
             model=model_name,
@@ -57,6 +67,137 @@ class GNXEngine:
         self.chat_history = []
         self.tokens_used_this_minute = 0
         self.last_token_reset = time.time()
+    
+    def _load_mcp_servers(self, config_path=None):
+        """Load and connect to MCP servers from config."""
+        try:
+            from src.mcp.config import load_mcp_config
+            from src.mcp.client import MCPClientManager
+            from src.mcp.tools import load_mcp_tools_as_langchain
+            
+            # Load config
+            config = load_mcp_config(config_path)
+            enabled_servers = config.get_enabled_servers()
+            
+            if not enabled_servers:
+                logger.info("No enabled MCP servers found in config")
+                return
+            
+            logger.info(f"Found {len(enabled_servers)} enabled MCP servers")
+            
+            # Create manager and add servers
+            self.mcp_manager = MCPClientManager()
+            for server_config in enabled_servers:
+                self.mcp_manager.add_server(
+                    name=server_config.name,
+                    transport=server_config.transport,
+                    command=server_config.command,
+                    args=server_config.args,
+                    env=server_config.env,
+                    url=server_config.url,
+                    headers=server_config.headers,
+                )
+            
+            # Connect and load tools (run in event loop)
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            async def connect_and_load():
+                results = await self.mcp_manager.connect_all()
+                connected = sum(1 for v in results.values() if v)
+                logger.info(f"Connected to {connected}/{len(results)} MCP servers")
+                
+                # Load tools
+                mcp_tools = await load_mcp_tools_as_langchain(
+                    self.mcp_manager,
+                    prefix_with_server=True  # Prefix to avoid name collisions
+                )
+                return mcp_tools
+            
+            if loop.is_running():
+                # Schedule for later if loop is running
+                logger.warning("Event loop running, MCP tools will be loaded later")
+            else:
+                self.mcp_tools = loop.run_until_complete(connect_and_load())
+                self.tools.extend(self.mcp_tools)
+                logger.info(f"Added {len(self.mcp_tools)} MCP tools to engine")
+        
+        except ImportError as e:
+            logger.warning(f"MCP support not available: {e}")
+        except Exception as e:
+            logger.error(f"Error loading MCP servers: {e}")
+    
+    def add_mcp_server(self, name, transport="stdio", **kwargs):
+        """
+        Add an MCP server dynamically at runtime.
+        
+        Args:
+            name: Server name
+            transport: "stdio" or "http"
+            **kwargs: Server-specific params (command, args, url, etc.)
+        """
+        try:
+            from src.mcp.client import MCPClientManager
+            from src.mcp.tools import load_mcp_tools_as_langchain
+            
+            if self.mcp_manager is None:
+                self.mcp_manager = MCPClientManager()
+            
+            self.mcp_manager.add_server(name, transport, **kwargs)
+            
+            # Connect and load tools
+            async def connect_and_load():
+                success = await self.mcp_manager.connect_server(name)
+                if success:
+                    new_tools = await load_mcp_tools_as_langchain(
+                        self.mcp_manager,
+                        server_name=name,
+                        prefix_with_server=True
+                    )
+                    return new_tools
+                return []
+            
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    logger.warning("Event loop running, cannot add MCP server synchronously")
+                    return False
+                new_tools = loop.run_until_complete(connect_and_load())
+            except RuntimeError:
+                new_tools = asyncio.run(connect_and_load())
+            
+            if new_tools:
+                self.mcp_tools.extend(new_tools)
+                self.tools.extend(new_tools)
+                # Rebind tools
+                self.agent.bind_tools(self.tools)
+                logger.info(f"Added MCP server '{name}' with {len(new_tools)} tools")
+                return True
+            return False
+        
+        except Exception as e:
+            logger.error(f"Error adding MCP server: {e}")
+            return False
+    
+    def list_mcp_servers(self):
+        """List all configured MCP servers and their status."""
+        if not self.mcp_manager:
+            return {}
+        return {
+            name: {
+                "transport": server.transport,
+                "connected": server.connected,
+                "tools": [t.name for t in server.tools] if server.tools else []
+            }
+            for name, server in self.mcp_manager.servers.items()
+        }
+    
+    def list_mcp_tools(self):
+        """List all loaded MCP tools."""
+        return [tool.name for tool in self.mcp_tools]
 
     def _check_token_quota(self, messages: list) -> tuple[bool, str]:
         """Check if we have token quota available. Returns (can_proceed, message)"""

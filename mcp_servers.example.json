@@ -1,0 +1,61 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "./"],
+      "description": "MCP server for filesystem operations - access files in current directory",
+      "enabled": false
+    },
+    "github": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "your-github-token-here"
+      },
+      "description": "MCP server for GitHub operations - requires GITHUB_PERSONAL_ACCESS_TOKEN",
+      "enabled": false
+    },
+    "brave-search": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@anthropic-ai/mcp-server-brave-search"],
+      "env": {
+        "BRAVE_API_KEY": "your-brave-api-key-here"
+      },
+      "description": "MCP server for Brave Search API",
+      "enabled": false
+    },
+    "sqlite": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@anthropic-ai/mcp-server-sqlite", "--db-path", "./database.db"],
+      "description": "MCP server for SQLite database operations",
+      "enabled": false
+    },
+    "memory": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"],
+      "description": "MCP server for persistent memory/knowledge graph",
+      "enabled": false
+    },
+    "custom-python-server": {
+      "transport": "stdio",
+      "command": "python",
+      "args": ["path/to/your/mcp_server.py"],
+      "description": "Your custom Python MCP server",
+      "enabled": false
+    },
+    "custom-http-server": {
+      "transport": "http",
+      "url": "http://localhost:8000/mcp",
+      "headers": {
+        "Authorization": "Bearer your-token-here"
+      },
+      "description": "Example HTTP/Streamable HTTP MCP server",
+      "enabled": false
+    }
+  }
+}
