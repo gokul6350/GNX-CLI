@@ -32,7 +32,7 @@ def main():
             if not user_input.strip():
                 continue
                 
-            if user_input.lower() in ["/exit", "exit", "/quit"]:
+            if user_input.lower() in ["/exit", "exit", "/quit","/q","/E"]:
                 console.print("[yellow]Shutting down...[/yellow]")
                 break
             

@@ -427,30 +427,10 @@ def computer_hotkey(keys: str) -> str:
         return f"Error pressing hotkey: {e}"
 
 
-@tool
-def computer_wait(seconds: float = 2.0) -> str:
-    """
-    Wait for a specified number of seconds.
-    Useful to wait for UI elements to load or animations to complete.
-    
-    Args:
-        seconds: Number of seconds to wait (default: 2.0)
-    
-    Returns:
-        Confirmation of the wait
-    """
-    try:
-        time.sleep(seconds)
-        return f"Waited {seconds} seconds"
-    except Exception as e:
-        return f"Error waiting: {e}"
-
-
 # Export all tools
 COMPUTER_USE_TOOLS = [
     computer_screenshot,
     computer_control,
     computer_type_text,
     computer_hotkey,
-    computer_wait,
 ]

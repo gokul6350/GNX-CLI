@@ -576,25 +576,6 @@ def mobile_button(button: str) -> str:
         return f"Button error: {e}"
 
 
-@tool
-def mobile_wait(seconds: float = 2.0) -> str:
-    """
-    Wait for a specified number of seconds.
-    Useful to wait for app transitions or loading.
-    
-    Args:
-        seconds: Number of seconds to wait (default: 2.0)
-    
-    Returns:
-        Confirmation of the wait
-    """
-    try:
-        time.sleep(seconds)
-        return f"Waited {seconds} seconds"
-    except Exception as e:
-        return f"Wait error: {e}"
-
-
 # Export all tools
 MOBILE_USE_TOOLS = [
     mobile_devices,
@@ -605,5 +586,4 @@ MOBILE_USE_TOOLS = [
     mobile_type_text,
     mobile_swipe,
     mobile_button,
-    mobile_wait,
 ]

@@ -6,7 +6,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 from src.tools.filesystem import ls
 from src.tools.file_ops import read_file, write_file, edit_file
 from src.tools.search import glob, grep
-from src.tools.system import capture_screen
+from src.tools.system import SYSTEM_TOOLS
 from src.tools.todos import write_todos, read_todos, mark_complete
 from src.tools.web_search import web_search, web_search_detailed, fetch_url
 from src.tools.computer_use import COMPUTER_USE_TOOLS
@@ -27,10 +27,13 @@ class GNXEngine:
         # All tools including computer_use and mobile_use by default
         self.tools = [
             ls, read_file, write_file, edit_file, 
-            glob, grep, capture_screen,
+            glob, grep,
             write_todos, read_todos, mark_complete,
             web_search, web_search_detailed, fetch_url
         ]
+        
+        # Add system utility tools (wait, capture_screen, etc.)
+        self.tools.extend(SYSTEM_TOOLS)
         
         # Add computer use tools (desktop automation)
         self.tools.extend(COMPUTER_USE_TOOLS)
