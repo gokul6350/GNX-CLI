@@ -43,6 +43,9 @@ A powerful Python-based AI agent that combines LLM reasoning with real-world aut
 
 ## Architecture
 
+![GNX Architecture](./imgs/architecture.png)
+![GNX Sequence Flow](./imgs/sequence_flow.png)
+
 ### Workflow: User Goal → Gemma → V_action → Action Execution
 
 ```
@@ -120,11 +123,17 @@ source .venv/bin/activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Set Google API key (for Gemma)
-export GOOGLE_API_KEY="your-api-key"
+# Configure Environment
+# Copy the example environment file to .env
+# Windows:
+copy .env.example .env
+# Mac/Linux:
+cp .env.example .env
 
-# Optional: Set HuggingFace token (for V_action model)
-export HF_TOKEN="your-hf-token"
+# Open .env and fill in your API keys:
+# GOOGLE_API_KEY=your_google_api_key_here
+# GROQ_API_KEY=your_groq_api_key_here
+# HF_TOKEN=your_huggingface_token_here
 ```
 
 ---
@@ -193,19 +202,24 @@ GNX: "Mark the first task as complete"
 
 ## Configuration
 
-### HuggingFace Token (for V_action)
-Models are accessed via HuggingFace Inference API:
+GNX CLI uses environment variables for configuration. You can set these in a `.env` file in the project root.
 
-```bash
-export HF_TOKEN="hf_..." # Your HuggingFace API token
-```
+### Environment Variables
 
-### Google API Key (for Gemma)
-Set in environment:
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `GOOGLE_API_KEY` | API key for Google Gemini models | Yes (if using Gemini) |
+| `GROQ_API_KEY` | API key for Groq models | Yes (if using Groq) |
+| `HF_TOKEN` | HuggingFace token for V_action vision model | Optional (Recommended) |
+| `GNX_DEFAULT_PROVIDER` | Default LLM provider (`gemini` or `groq`) | No (Default: `gemini`) |
 
-```bash
-export GOOGLE_API_KEY="AIza..."
-```
+### Setting up .env
+
+1. Copy the example file:
+   ```bash
+   cp .env.example .env
+   ```
+2. Edit `.env` with your keys.
 
 ---
 
