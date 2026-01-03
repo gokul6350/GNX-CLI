@@ -6,6 +6,7 @@ from langchain_core.messages import AIMessage, SystemMessage, HumanMessage, Tool
 from langchain_core.language_models import BaseChatModel
 from . import engine
 from .prompts import build_react_system_prompt
+from src.utils.logger_client import history_logger
 # Configure logging to file
 logging.basicConfig(
     filename='app0.log',
@@ -206,6 +207,9 @@ class ReActAdapter:
             content = response.content
             logger.debug(f"Model response: {content[:300]}...")
             
+            # Log AI Thought/Action (Intermediate)
+            history_logger.log("ai", content, is_context=False)
+
             # Parse for tool call
             action_name, action_args = self._parse_react_output(content)
             
@@ -217,6 +221,20 @@ class ReActAdapter:
                 # Execute the tool
                 tool_result = self._execute_tool(action_name, action_args)
                 
+                # Log Tool Result
+                history_logger.log("tool_result", tool_result, is_context=False, metadata={"tool": action_name})
+                
+                # Check for image paths in tool result (auto-log images)
+                import os
+                if isinstance(tool_result, str) and any(ext in tool_result.lower() for ext in ['.png', '.jpg', '.jpeg']):
+                    possible_path = tool_result.strip()
+                    # Handle potential "Screenshot saved to: path" format
+                    if ": " in possible_path:
+                        possible_path = possible_path.split(": ")[-1].strip()
+                    
+                    if os.path.exists(possible_path) and os.path.isfile(possible_path):
+                        history_logger.log_image(possible_path)
+
                 # Print tool result LIVE
                 print_tool_result(tool_result)
                 

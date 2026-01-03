@@ -2,23 +2,26 @@ import os
 import sys
 import json
 import subprocess
+from dotenv import load_dotenv
 from rich.prompt import Prompt
-from src.gnx_engine.engine import GNXEngine
+from src.gnx_engine.engine import GNXEngine, PROVIDERS
 from src.ui.display import show_banner, print_agent_response, print_error, console
 from src.utils.token_counter import create_token_report, count_messages_tokens
+
+# Load environment variables from .env file
+load_dotenv()
 
 CHATS_DIR = "saved_chats"
 
 def main():
     show_banner()
     
-    # Ensure API Key
-    if "GOOGLE_API_KEY" not in os.environ:
-       os.environ["GOOGLE_API_KEY"] = "AIzaSyAZc84jW2KbLE2qFCas80BtaMftNA_18q8"
-
+    # API keys are loaded from .env file via load_dotenv()
     try:
         engine = GNXEngine()
+        config = engine.get_current_config()
         console.print("[bold green]System Initialized. GNX Engine Online.[/bold green]")
+        console.print(f"[cyan]✓ Provider: {config['provider']} | Model: {config['model']}[/cyan]")
         console.print("[cyan]✓ Computer Use & Mobile Use tools enabled[/cyan]")
             
     except Exception as e:
@@ -58,7 +61,8 @@ def main():
             print_error(str(e))
 
 def handle_command(cmd_str, engine):
-    cmd = cmd_str.split()[0].lower()
+    parts = cmd_str.split()
+    cmd = parts[0].lower()
     if cmd == "/tools":
         console.print("[bold]Available Tools:[/bold]")
         from rich.table import Table
@@ -72,6 +76,8 @@ def handle_command(cmd_str, engine):
             table.add_row(tool.name, desc)
         
         console.print(table)
+    elif cmd == "/model":
+        handle_model_command(parts, engine)
     elif cmd == "/clear":
         os.system('cls' if os.name == 'nt' else 'clear')
         show_banner()
@@ -82,6 +88,11 @@ def handle_command(cmd_str, engine):
         table.add_column("Description", style="white")
         table.add_row("/help", "Show this help message")
         table.add_row("/tools", "List all available tools")
+        table.add_row("/model", "Show current provider and model")
+        table.add_row("/model provider groq", "Switch to Groq provider")
+        table.add_row("/model provider gemini", "Switch to Gemini provider")
+        table.add_row("/model list [provider]", "List available models")
+        table.add_row("/model set <model_name>", "Set specific model")
         table.add_row("/clear", "Clear the screen")
         table.add_row("/history", "Show chat history length")
         table.add_row("/tokens", "Show token usage & estimated costs")
@@ -122,6 +133,74 @@ def handle_command(cmd_str, engine):
     else:
         console.print(f"[red]Unknown command: {cmd}[/red]")
         console.print("[dim]Type /help for available commands[/dim]")
+
+
+def handle_model_command(parts, engine):
+    """Handle /model subcommands for provider/model switching."""
+    from rich.table import Table
+    
+    if len(parts) == 1:
+        # Just /model - show current config
+        config = engine.get_current_config()
+        console.print(f"[bold]Current Configuration:[/bold]")
+        console.print(f"  [cyan]Provider:[/cyan] {config['provider']}")
+        console.print(f"  [cyan]Model:[/cyan] {config['model']}")
+        console.print(f"  [dim]Available providers: {', '.join(config['available_providers'])}[/dim]")
+        return
+    
+    subcmd = parts[1].lower()
+    
+    if subcmd == "provider":
+        if len(parts) < 3:
+            console.print("[red]Usage: /model provider <groq|gemini>[/red]")
+            console.print(f"[dim]Available providers: {', '.join(PROVIDERS.keys())}[/dim]")
+            return
+        
+        provider = parts[2].lower()
+        model_name = parts[3] if len(parts) > 3 else None
+        
+        success, message = engine.switch_provider(provider, model_name)
+        if success:
+            console.print(f"[green]✓ {message}[/green]")
+        else:
+            console.print(f"[red]✗ {message}[/red]")
+    
+    elif subcmd == "list":
+        # List available models for a provider
+        provider = parts[2].lower() if len(parts) > 2 else engine.provider
+        
+        if provider not in PROVIDERS:
+            console.print(f"[red]Unknown provider: {provider}[/red]")
+            return
+        
+        models = engine.list_models(provider)
+        table = Table(title=f"Available Models for {provider.upper()}")
+        table.add_column("Model Name", style="cyan")
+        table.add_column("Status", style="green")
+        
+        current_model = engine.model_name if provider == engine.provider else None
+        for model in models:
+            status = "← current" if model == current_model else ""
+            table.add_row(model, status)
+        
+        console.print(table)
+    
+    elif subcmd == "set":
+        if len(parts) < 3:
+            console.print("[red]Usage: /model set <model_name>[/red]")
+            console.print("[dim]Use '/model list' to see available models[/dim]")
+            return
+        
+        model_name = parts[2]
+        success, message = engine.switch_provider(engine.provider, model_name)
+        if success:
+            console.print(f"[green]✓ Model set to: {model_name}[/green]")
+        else:
+            console.print(f"[red]✗ {message}[/red]")
+    
+    else:
+        console.print(f"[red]Unknown subcommand: {subcmd}[/red]")
+        console.print("[dim]Usage: /model [provider <name>|list [provider]|set <model>][/dim]")
 
 
 def run_shell_command(cmd: str):

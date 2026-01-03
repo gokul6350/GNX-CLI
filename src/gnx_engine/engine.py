@@ -2,7 +2,9 @@ import asyncio
 import logging
 import os
 import time
+from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, AIMessage
 
 from src.tools.filesystem import ls
@@ -15,18 +17,62 @@ from src.tools.computer_use import COMPUTER_USE_TOOLS
 from src.tools.mobile_use import MOBILE_USE_TOOLS
 from src.tools.ui_automation import UI_AUTOMATION_TOOLS
 from src.utils.token_counter import count_messages_tokens
+from src.utils.logger_client import history_logger
+
+# Load environment variables from .env file
+load_dotenv()
 
 logger = logging.getLogger(__name__)
+
+# Supported providers and their default models
+PROVIDERS = {
+    "gemini": {
+        "default_model": "gemma-3-27b-it",
+        "env_key": "GOOGLE_API_KEY",
+        "models": ["gemma-3-27b-it", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"]
+    },
+    "groq": {
+        "default_model": "meta-llama/llama-4-scout-17b-16e-instruct",
+        "env_key": "GROQ_API_KEY",
+        "models": [
+            "meta-llama/llama-4-scout-17b-16e-instruct",
+            "meta-llama/llama-4-maverick-17b-128e-instruct",
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
+            "mixtral-8x7b-32768",
+            "gemma2-9b-it"
+        ]
+    }
+}
 
 class GNXEngine:
     # Free tier token limit: 15,000 tokens per minute for gemma-3-27b
     GEMMA_FREE_TIER_LIMIT = 15000
     TOKEN_RESET_INTERVAL = 60  # seconds
     
-    def __init__(self, model_name="gemma-3-27b-it", api_key=None, load_mcp=True, mcp_config_path=None):
-        self.model_name = model_name
+    def __init__(self, provider=None, model_name=None, api_key=None, load_mcp=True, mcp_config_path=None):
+        # Determine provider from args, env, or default
+        self.provider = provider or os.getenv("GNX_DEFAULT_PROVIDER", "gemini").lower()
+        
+        if self.provider not in PROVIDERS:
+            raise ValueError(f"Unknown provider: {self.provider}. Supported: {list(PROVIDERS.keys())}")
+        
+        provider_config = PROVIDERS[self.provider]
+        
+        # Determine model name
+        if model_name:
+            self.model_name = model_name
+        else:
+            env_model = os.getenv(f"{self.provider.upper()}_MODEL")
+            self.model_name = env_model or provider_config["default_model"]
+        
+        # Set API key from args or environment
         if api_key:
-            os.environ["GOOGLE_API_KEY"] = api_key
+            os.environ[provider_config["env_key"]] = api_key
+        
+        # Verify API key is available
+        if not os.getenv(provider_config["env_key"]):
+            logger.warning(f"No API key found for {self.provider}. Set {provider_config['env_key']} in .env or environment.")
         
         # All tools including computer_use and mobile_use by default
         self.tools = [
@@ -53,11 +99,8 @@ class GNXEngine:
         if load_mcp:
             self._load_mcp_servers(mcp_config_path)
         
-        # Initialize Gemma directly WITHOUT DeepAgents
-        self.llm = ChatGoogleGenerativeAI(
-            model=model_name,
-            temperature=0.7,
-        )
+        # Initialize the LLM based on provider
+        self.llm = self._create_llm()
         
         # Wrap with ReActAdapter for tool handling
         from src.gnx_engine.adapters import ReActAdapter
@@ -67,6 +110,63 @@ class GNXEngine:
         self.chat_history = []
         self.tokens_used_this_minute = 0
         self.last_token_reset = time.time()
+    
+    def _create_llm(self):
+        """Create the LLM instance based on current provider and model."""
+        if self.provider == "gemini":
+            return ChatGoogleGenerativeAI(
+                model=self.model_name,
+                temperature=0.7,
+            )
+        elif self.provider == "groq":
+            return ChatGroq(
+                model=self.model_name,
+                temperature=0.7,
+                max_tokens=1024,
+            )
+        else:
+            raise ValueError(f"Unknown provider: {self.provider}")
+    
+    def switch_provider(self, provider: str, model_name: str = None):
+        """Switch to a different provider/model at runtime."""
+        provider = provider.lower()
+        if provider not in PROVIDERS:
+            return False, f"Unknown provider: {provider}. Supported: {list(PROVIDERS.keys())}"
+        
+        provider_config = PROVIDERS[provider]
+        
+        # Check API key
+        if not os.getenv(provider_config["env_key"]):
+            return False, f"No API key for {provider}. Set {provider_config['env_key']} in .env"
+        
+        # Update provider and model
+        self.provider = provider
+        self.model_name = model_name or provider_config["default_model"]
+        
+        # Recreate the LLM
+        self.llm = self._create_llm()
+        
+        # Rebind tools to new adapter
+        from src.gnx_engine.adapters import ReActAdapter
+        self.agent = ReActAdapter(self.llm)
+        self.agent.bind_tools(self.tools)
+        
+        return True, f"Switched to {provider} with model {self.model_name}"
+    
+    def list_models(self, provider: str = None):
+        """List available models for a provider."""
+        provider = provider or self.provider
+        if provider not in PROVIDERS:
+            return []
+        return PROVIDERS[provider]["models"]
+    
+    def get_current_config(self):
+        """Get current provider and model configuration."""
+        return {
+            "provider": self.provider,
+            "model": self.model_name,
+            "available_providers": list(PROVIDERS.keys())
+        }
     
     def _load_mcp_servers(self, config_path=None):
         """Load and connect to MCP servers from config."""
@@ -235,6 +335,9 @@ class GNXEngine:
 
     def run(self, user_input: str) -> str:
         try:
+            # Log User Input
+            history_logger.log("user", user_input, is_context=True)
+
             # Build message list
             messages = list(self.chat_history)
             messages.append(HumanMessage(content=user_input))
@@ -249,6 +352,9 @@ class GNXEngine:
             
             # Invoke wrapped adapter (handles ReAct loop internally)
             response = self.agent.invoke(messages)
+            
+            # Log Final Response
+            history_logger.log("ai", response.content, is_context=True)
             
             # Track tokens used
             self.tokens_used_this_minute += count_messages_tokens(messages)

@@ -28,7 +28,6 @@ from langchain_core.tools import tool
 # Configuration
 HF_BASE_URL = "https://router.huggingface.co/v1"
 V_ACTION_MODEL = "Qwen/Qwen3-VL-8B-Instruct:fastest"  # Vision-Language model for actions
-HF_TOKEN_DEFAULT = "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"
 
 HIGHLIGHT_DURATION = 1.5
 HIGHLIGHT_SIZE = 100
@@ -52,7 +51,12 @@ class ActionResult:
 
 def _get_client() -> OpenAI:
     """Get OpenAI client for HuggingFace router."""
-    token = os.environ.get("HF_TOKEN", HF_TOKEN_DEFAULT)
+    token = os.environ.get("HF_TOKEN")
+    if not token:
+        raise ValueError(
+            "HF_TOKEN not found in environment. "
+            "Please set HF_TOKEN in your .env file for V_action vision model."
+        )
     return OpenAI(base_url=HF_BASE_URL, api_key=token)
 
 

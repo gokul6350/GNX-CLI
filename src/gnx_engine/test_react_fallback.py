@@ -4,8 +4,8 @@ import sys
 
 sys.path.append(os.getcwd())
 
-if "GOOGLE_API_KEY" not in os.environ:
-    os.environ["GOOGLE_API_KEY"] = "AIzaSyAZc84jW2KbLE2qFCas80BtaMftNA_18q8"
+from dotenv import load_dotenv
+load_dotenv()  # Load from .env file
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.agents import create_react_agent, AgentExecutor

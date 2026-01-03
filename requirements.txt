@@ -1,5 +1,6 @@
 langchain
 langchain-google-genai
+langchain-groq
 langchain-community
 deepagents
 rich
@@ -9,6 +10,12 @@ pyautogui
 mss
 openai
 pywinauto
+python-dotenv
+groq
 # MCP (Model Context Protocol) support
 mcp[cli]
 langchain-mcp-adapters
+# Backend
+flask
+flask-sqlalchemy
+requests
