@@ -434,7 +434,12 @@ I took those 2 months of experience and built something in a day. That's not stu
 
 ---
 
+
 ## 🔗 Part of LAMx Project
+
+GNX CLI is a rewritten and evolved version of **[Axolot OS](https://github.com/gokul6350/Axolot-os)**, now optimized as a core component of the **LAMx** project - an integrated ecosystem for General AI-powered intelligence.
+
+![LAMx Logo](./imgs/LAMx.png)
 
 ![LAMx Logo](./imgs/LAMx.png)
 
