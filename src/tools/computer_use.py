@@ -60,7 +60,7 @@ def _get_client() -> OpenAI:
     return OpenAI(base_url=HF_BASE_URL, api_key=token)
 
 
-def _capture_screenshot(region: Optional[Dict[str, int]] = None) -> Tuple[str, str, Tuple[int, int]]:
+def _capture_screenshot(region: Optional[Dict[str, int]] = None, max_dim: Optional[int] = None) -> Tuple[str, str, Tuple[int, int]]:
     """
     Capture desktop screenshot.
     
@@ -71,6 +71,10 @@ def _capture_screenshot(region: Optional[Dict[str, int]] = None) -> Tuple[str, s
         mon = region or sct.monitors[0]
         shot = sct.grab(mon)
         img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
+
+        # Optionally downscale to control payload size
+        if max_dim:
+            img.thumbnail((max_dim, max_dim), Image.LANCZOS)
         
         # Save to buffer for base64
         buf = io.BytesIO()
@@ -78,11 +82,12 @@ def _capture_screenshot(region: Optional[Dict[str, int]] = None) -> Tuple[str, s
         b64 = base64.b64encode(buf.getvalue()).decode("ascii")
         data_url = f"data:image/png;base64,{b64}"
         
-        # Save to file
+        # Save to file (resized if max_dim is set)
         path = os.path.join(os.getcwd(), "desktop_screenshot.png")
         img.save(path)
-        
-        return data_url, path, (shot.width, shot.height)
+
+        return data_url, path, (img.width, img.height)
+
 
 
 def _v_action(instruction: str, screenshot_data_url: str, screen_size: Tuple[int, int]) -> ActionResult:
@@ -318,8 +323,18 @@ def computer_screenshot() -> str:
     Use this to see the current state of the desktop before giving instructions.
     """
     try:
-        data_url, path, size = _capture_screenshot()
-        return f"Screenshot captured: {path}\nScreen size: {size[0]}x{size[1]}\nUse computer_control to execute actions based on what you see."
+        # Downscale to 512x512 specifically for LLM context control
+        data_url, path, size = _capture_screenshot(max_dim=512)
+        payload = {
+            "type": "screenshot",
+            "path": path,
+            "width": size[0],
+            "height": size[1],
+            # Include the data URL (already 512x512) so the main model can "see" the image
+            "data_url": data_url,
+            "note": "Use computer_control to execute actions based on what you see."
+        }
+        return json.dumps(payload)
     except Exception as e:
         return f"Error capturing screenshot: {e}"
 

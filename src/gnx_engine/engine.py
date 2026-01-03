@@ -3,10 +3,9 @@ import logging
 import os
 import time
 from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, AIMessage
 
+from src.gnx_engine.providers import PROVIDERS, create_llm
 from src.tools.filesystem import ls
 from src.tools.file_ops import read_file, write_file, edit_file
 from src.tools.search import glob, grep
@@ -23,27 +22,6 @@ from src.utils.logger_client import history_logger
 load_dotenv()
 
 logger = logging.getLogger(__name__)
-
-# Supported providers and their default models
-PROVIDERS = {
-    "gemini": {
-        "default_model": "gemma-3-27b-it",
-        "env_key": "GOOGLE_API_KEY",
-        "models": ["gemma-3-27b-it", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"]
-    },
-    "groq": {
-        "default_model": "meta-llama/llama-4-scout-17b-16e-instruct",
-        "env_key": "GROQ_API_KEY",
-        "models": [
-            "meta-llama/llama-4-scout-17b-16e-instruct",
-            "meta-llama/llama-4-maverick-17b-128e-instruct",
-            "llama-3.3-70b-versatile",
-            "llama-3.1-8b-instant",
-            "mixtral-8x7b-32768",
-            "gemma2-9b-it"
-        ]
-    }
-}
 
 class GNXEngine:
     # Free tier token limit: 15,000 tokens per minute for gemma-3-27b
@@ -113,19 +91,7 @@ class GNXEngine:
     
     def _create_llm(self):
         """Create the LLM instance based on current provider and model."""
-        if self.provider == "gemini":
-            return ChatGoogleGenerativeAI(
-                model=self.model_name,
-                temperature=0.7,
-            )
-        elif self.provider == "groq":
-            return ChatGroq(
-                model=self.model_name,
-                temperature=0.7,
-                max_tokens=1024,
-            )
-        else:
-            raise ValueError(f"Unknown provider: {self.provider}")
+        return create_llm(self.provider, self.model_name)
     
     def switch_provider(self, provider: str, model_name: str = None):
         """Switch to a different provider/model at runtime."""

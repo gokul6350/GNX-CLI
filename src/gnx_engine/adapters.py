@@ -31,6 +31,7 @@ class ReActAdapter:
         self.model = model
         self.tools = []
         self.tool_map = {}
+        self.image_message_limit = 2
         
     def bind_tools(self, tools, **kwargs):
         """Intercept tool binding and store tools for prompt generation."""
@@ -97,6 +98,50 @@ class ReActAdapter:
             return action_name, args
         
         return None, None
+
+    def _parse_screenshot_payload(self, tool_result: str):
+        """Extract screenshot payload if tool_result is JSON with data_url."""
+        try:
+            obj = json.loads(tool_result)
+            if isinstance(obj, dict) and obj.get("type") == "screenshot" and obj.get("data_url"):
+                return obj
+        except Exception:
+            return None
+        return None
+
+    def _build_screenshot_message(self, payload: dict) -> HumanMessage:
+        """Build a multimodal message with text + image for the main model.
+        
+        Args:
+            payload: Screenshot payload dict with path, width, height, data_url, note
+        """
+        width = payload.get("width")
+        height = payload.get("height")
+        size_str = f"{width}x{height}" if width and height else "unknown"
+        note = payload.get("note", "")
+        path = payload.get("path", "unknown")
+        data_url = payload.get("data_url", "")
+        
+        # Build text observation
+        text_parts = [
+            f"Observation: Screenshot {size_str} from {path}"
+        ]
+        if note:
+            text_parts.append(f"({note})")
+        
+        # Proper multimodal format for LangChain
+        content = [
+            {"type": "text", "text": " ".join(text_parts)},
+        ]
+        
+        # Add image if data_url is available
+        if data_url:
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": data_url},
+            })
+        
+        return HumanMessage(content=content)
     
     def _execute_tool(self, tool_name: str, args: dict) -> str:
         """Execute a tool and return its result."""
@@ -171,6 +216,8 @@ class ReActAdapter:
         conversation = list(messages)
         max_retries = 3
         retry_count = 0
+        image_message_indices = []
+        screenshot_payloads = {}  # Track payloads by message index
         
         while iteration < self.MAX_ITERATIONS:
             iteration += 1
@@ -178,6 +225,11 @@ class ReActAdapter:
             
             # Convert to Gemma-compatible format
             gemma_messages = self._build_messages_for_gemma(conversation)
+            
+            # Count tokens before sending (includes image tokens from data_urls)
+            from src.utils.token_counter import count_messages_tokens
+            token_count = count_messages_tokens(gemma_messages)
+            console.print(f"[dim]📊 Sending {token_count:,} tokens to model...[/dim]")
             
             # Call the model with spinner animation and retry logic
             try:
@@ -224,9 +276,16 @@ class ReActAdapter:
                 # Log Tool Result
                 history_logger.log("tool_result", tool_result, is_context=False, metadata={"tool": action_name})
                 
+                # Try to extract screenshot payload for image-aware history
+                screenshot_payload = None
+                if action_name == "computer_screenshot":
+                    screenshot_payload = self._parse_screenshot_payload(tool_result)
+
                 # Check for image paths in tool result (auto-log images)
                 import os
-                if isinstance(tool_result, str) and any(ext in tool_result.lower() for ext in ['.png', '.jpg', '.jpeg']):
+                if screenshot_payload and screenshot_payload.get("path") and os.path.exists(screenshot_payload.get("path")):
+                    history_logger.log_image(screenshot_payload.get("path"))
+                elif isinstance(tool_result, str) and any(ext in tool_result.lower() for ext in ['.png', '.jpg', '.jpeg']):
                     possible_path = tool_result.strip()
                     # Handle potential "Screenshot saved to: path" format
                     if ": " in possible_path:
@@ -240,7 +299,35 @@ class ReActAdapter:
                 
                 # Add AI response and tool result to conversation
                 conversation.append(AIMessage(content=content))
-                conversation.append(HumanMessage(content=f"Observation: {tool_result}"))
+                if screenshot_payload:
+                    # Always include the image in multimodal format for first 2 screenshots
+                    # For older ones, strip the data_url to save tokens
+                    if len(image_message_indices) < self.image_message_limit:
+                        # Include full image data
+                        obs_message = self._build_screenshot_message(screenshot_payload)
+                    else:
+                        # Remove data_url to save tokens
+                        payload_copy = screenshot_payload.copy()
+                        payload_copy["data_url"] = ""
+                        obs_message = self._build_screenshot_message(payload_copy)
+                    
+                    msg_idx = len(conversation)
+                    conversation.append(obs_message)
+                    image_message_indices.append(msg_idx)
+                    screenshot_payloads[msg_idx] = screenshot_payload
+                    
+                    # Keep only the latest N screenshots with images
+                    if len(image_message_indices) > self.image_message_limit:
+                        drop_index = image_message_indices.pop(0)
+                        # Replace with text-only version (no image)
+                        old_payload = screenshot_payloads.get(drop_index)
+                        if old_payload:
+                            payload_copy = old_payload.copy()
+                            payload_copy["data_url"] = ""
+                            lightweight_msg = self._build_screenshot_message(payload_copy)
+                            conversation[drop_index] = lightweight_msg
+                else:
+                    conversation.append(HumanMessage(content=f"Observation: {tool_result}"))
                 
                 logger.debug(f"Tool executed, continuing loop")
             else:
