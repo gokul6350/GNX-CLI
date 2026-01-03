@@ -3,43 +3,17 @@
 A powerful Python-based AI agent that combines LLM reasoning with real-world automation. Uses Gemma 3 for planning and V_action vision model for precise desktop and mobile device control.
 
 ![GNX CLI Demo](./imgs/img1.png)
-
 ## Features
 
-### 🖥️ Computer Use Tools
-- **computer_screenshot** - Capture desktop screen state
-- **computer_control** - Vision-based desktop automation (click, type, interact with UI)
-- **computer_type_text** - Type text at cursor position
-- **computer_hotkey** - Press keyboard shortcuts
-- **computer_wait** - Wait for UI elements to load
+GNX CLI can control your computer and phone like a real person would:
 
-### 📱 Mobile Use Tools (via ADB)
-- **mobile_devices** - List connected Android devices
-- **mobile_connect** - Connect to specific device
-- **mobile_screenshot** - Capture phone screen
-- **mobile_control** - Vision-based mobile automation
-- **mobile_tap**, **mobile_swipe**, **mobile_button** - Direct device control
-- **mobile_type_text** - Type on mobile keyboard
+- **Control Your Computer** - Take screenshots, click buttons, type text, open programs
+- **Control Your Phone** - Take screenshots, tap buttons, type text, open apps  
+- **Read & Write Files** - Create files, read content, edit text
+- **Search the Internet** - Find information online, visit websites
+- **Manage Tasks** - Create to-do lists, check them off, organize your work
+- **Advanced Actions** - Wait for things to load, use keyboard shortcuts, automate workflows
 
-### 📁 File System Tools
-- **ls** - List directory contents
-- **read_file** - Read file contents
-- **write_file** - Create/write files
-- **edit_file** - Edit existing files
-- **glob** - Find files by pattern
-- **grep** - Search text in files
-
-### 🔍 Web & Search Tools
-- **web_search** - DuckDuckGo search with summary
-- **web_search_detailed** - Detailed search with URLs and snippets
-- **fetch_url** - Fetch and read webpage content
-
-### ✅ Task Management
-- **write_todos** - Create TODO lists
-- **read_todos** - Display TODO items
-- **mark_complete** - Mark tasks as done
-
----
 
 ## Architecture
 
@@ -129,12 +103,6 @@ pip install -r requirements.txt
 copy .env.example .env
 # Mac/Linux:
 cp .env.example .env
-
-# Open .env and fill in your API keys:
-# GOOGLE_API_KEY=your_google_api_key_here
-# GROQ_API_KEY=your_groq_api_key_here
-# HF_TOKEN=your_huggingface_token_here
-```
 
 ---
 
@@ -324,8 +292,40 @@ GNX CLI/
 │   │   └── display.py     # Rich terminal UI
 │   └── utils/
 │       └── token_counter.py # Token usage tracking
-└── hybrid_cli/            # Original implementation (reference)
+├── .env.example           # Environment variables template (copy to .env)
+└── imgs/
+    ├── img1.png           # Demo image
+    ├── architecture.png   # ReAct architecture diagram
+    ├── sequence_flow.png  # Sequence/loop workflow diagram
+    └── LAMx.png           # LAMx project logo
 ```
+
+
+## Environment Template
+
+The `.env.example` file documents the configurable keys that GNX CLI reads at runtime. Copy it to `.env`, replace the placeholders with your actual API keys, and store the file alongside the project root (it is ignored by Git).
+
+```text
+# GNX CLI Environment Variables
+# Copy this file to .env and fill in your API keys
+
+# Google Gemini API Key (for Gemini models)
+GOOGLE_API_KEY=your_google_api_key_here
+
+# Groq API Key (for Llama, Mixtral, and other Groq-hosted models)
+GROQ_API_KEY=your_groq_api_key_here
+
+# HuggingFace Token (for V_action vision model in computer_use)
+HF_TOKEN=your_huggingface_token_here
+
+# Default provider: "gemini" or "groq"
+GNX_DEFAULT_PROVIDER=gemini
+
+# Default model names (optional - will use defaults if not set)
+# GEMINI_MODEL=gemma-3-27b-it
+# GROQ_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
+```
+
 
 ---
 
@@ -439,7 +439,7 @@ I took those 2 months of experience and built something in a day. That's not stu
 
 GNX CLI is a rewritten and evolved version of **[Axolot OS](https://github.com/gokul6350/Axolot-os)**, now optimized as a core component of the **LAMx** project - an integrated ecosystem for General AI-powered intelligence.
 
-![LAMx Logo](./imgs/LAMx.png)
+
 
 ![LAMx Logo](./imgs/LAMx.png)
 
