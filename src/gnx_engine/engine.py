@@ -24,13 +24,14 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 class GNXEngine:
-    # Free tier token limit: 15,000 tokens per minute for gemma-3-27b
-    GEMMA_FREE_TIER_LIMIT = 15000
+    # Groq free tier: 6000 tokens/min for Llama 4 Scout
+    # See: https://console.groq.com/settings/limits
+    FREE_TIER_TOKEN_LIMIT = 6000
     TOKEN_RESET_INTERVAL = 60  # seconds
     
     def __init__(self, provider=None, model_name=None, api_key=None, load_mcp=True, mcp_config_path=None):
-        # Determine provider from args, env, or default
-        self.provider = provider or os.getenv("GNX_DEFAULT_PROVIDER", "gemini").lower()
+        # Determine provider from args, env, or default to groq
+        self.provider = provider or os.getenv("GNX_DEFAULT_PROVIDER", "groq").lower()
         
         if self.provider not in PROVIDERS:
             raise ValueError(f"Unknown provider: {self.provider}. Supported: {list(PROVIDERS.keys())}")
@@ -80,9 +81,9 @@ class GNXEngine:
         # Initialize the LLM based on provider
         self.llm = self._create_llm()
         
-        # Wrap with ReActAdapter for tool handling
-        from src.gnx_engine.adapters import ReActAdapter
-        self.agent = ReActAdapter(self.llm)
+        # Use NativeToolAdapter for native tool calling support
+        from src.gnx_engine.adapters import NativeToolAdapter
+        self.agent = NativeToolAdapter(self.llm)
         self.agent.bind_tools(self.tools)
         
         self.chat_history = []
@@ -112,9 +113,9 @@ class GNXEngine:
         # Recreate the LLM
         self.llm = self._create_llm()
         
-        # Rebind tools to new adapter
-        from src.gnx_engine.adapters import ReActAdapter
-        self.agent = ReActAdapter(self.llm)
+        # Rebind tools to new adapter with native tool calling
+        from src.gnx_engine.adapters import NativeToolAdapter
+        self.agent = NativeToolAdapter(self.llm)
         self.agent.bind_tools(self.tools)
         
         return True, f"Switched to {provider} with model {self.model_name}"
@@ -276,23 +277,23 @@ class GNXEngine:
         
         # Estimate tokens for this request
         estimated_tokens = count_messages_tokens(messages)
-        remaining_tokens = self.GEMMA_FREE_TIER_LIMIT - self.tokens_used_this_minute
+        remaining_tokens = self.FREE_TIER_TOKEN_LIMIT - self.tokens_used_this_minute
         
         if estimated_tokens > remaining_tokens:
             wait_time = int(self.TOKEN_RESET_INTERVAL - (current_time - self.last_token_reset))
             msg = (
                 f"\n❌ TOKEN QUOTA EXCEEDED (Free Tier Limit)\n"
-                f"   Tokens used this minute: {self.tokens_used_this_minute}/{self.GEMMA_FREE_TIER_LIMIT}\n"
+                f"   Tokens used this minute: {self.tokens_used_this_minute}/{self.FREE_TIER_TOKEN_LIMIT}\n"
                 f"   Estimated tokens for this request: {estimated_tokens}\n"
                 f"   Please wait ~{wait_time} seconds for quota reset\n"
             )
             return False, msg
         
         # Warn if approaching limit
-        if self.tokens_used_this_minute + estimated_tokens > self.GEMMA_FREE_TIER_LIMIT * 0.8:
+        if self.tokens_used_this_minute + estimated_tokens > self.FREE_TIER_TOKEN_LIMIT * 0.8:
             msg = (
                 f"\n⚠️  WARNING: Approaching token quota\n"
-                f"   Used: {self.tokens_used_this_minute} / {self.GEMMA_FREE_TIER_LIMIT}\n"
+                f"   Used: {self.tokens_used_this_minute} / {self.FREE_TIER_TOKEN_LIMIT}\n"
                 f"   This request will use: ~{estimated_tokens} tokens\n"
             )
             return True, msg

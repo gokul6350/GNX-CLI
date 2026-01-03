@@ -1,6 +1,6 @@
 # GNX CLI - AI Agent with Desktop & Mobile Control
 
-A powerful Python-based AI agent that combines LLM reasoning with real-world automation. Uses Gemma 3 for planning and V_action vision model for precise desktop and mobile device control.
+A powerful Python-based AI agent that combines LLM reasoning with real-world automation. Uses **Llama 4 Scout** (meta-llama/llama-4-scout-17b-16e-instruct) with native tool calling and multimodal vision capabilities for intelligent desktop and mobile device control.
 
 ![GNX CLI Demo](./imgs/img1.png)
 ## Features
@@ -20,7 +20,7 @@ GNX CLI can control your computer and phone like a real person would:
 ![GNX Architecture](./imgs/architecture.png)
 ![GNX Sequence Flow](./imgs/sequence_flow.png)
 
-### Workflow: User Goal → Gemma → V_action → Action Execution
+### Workflow: User Goal → Llama 4 Scout → Action Execution
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -30,25 +30,26 @@ GNX CLI can control your computer and phone like a real person would:
                  │
                  ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ 2. GEMMA ENGINE (Main LLM)                                  │
+│ 2. LLAMA 4 SCOUT ENGINE (Main LLM)                          │
 │    - Understands user intent                                │
+│    - Native tool calling (no ReAct parsing needed)          │
+│    - Multimodal vision for screenshot analysis              │
 │    - Plans action sequence                                  │
-│    - Decides which tools to use                             │
 └────────────────┬────────────────────────────────────────────┘
                  │
                  ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ 3. SCREENSHOT CAPTURE                                       │
 │    - Takes current screen/phone screenshot                  │
-│    - Sends to V_action as context                           │
+│    - Sends image directly to Llama 4 Scout                  │
 └────────────────┬────────────────────────────────────────────┘
                  │
                  ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ 4. V_ACTION MODEL (Vision-Language)                         │
-│    - Analyzes screenshot                                    │
-│    - Gets natural language instruction from Gemma          │
-│    - Returns precise action + coordinates (0-1000 grid)    │
+│ 4. NATIVE TOOL CALLING                                      │
+│    - Model decides which tools to use                       │
+│    - Returns structured tool calls                          │
+│    - Handles images natively (multimodal)                   │
 └────────────────┬────────────────────────────────────────────┘
                  │
                  ▼
@@ -176,10 +177,10 @@ GNX CLI uses environment variables for configuration. You can set these in a `.e
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `GOOGLE_API_KEY` | API key for Google Gemini models | Yes (if using Gemini) |
-| `GROQ_API_KEY` | API key for Groq models | Yes (if using Groq) |
-| `HF_TOKEN` | HuggingFace token for V_action vision model | Optional (Recommended) |
-| `GNX_DEFAULT_PROVIDER` | Default LLM provider (`gemini` or `groq`) | No (Default: `gemini`) |
+| `GROQ_API_KEY` | API key for Groq models (Llama 4 Scout) | Yes |
+| `GOOGLE_API_KEY` | API key for Google Gemini models | No (fallback) |
+| `HF_TOKEN` | HuggingFace token for V_action vision model | Optional |
+| `GNX_DEFAULT_PROVIDER` | Default LLM provider (`groq` or `gemini`) | No (Default: `groq`) |
 
 ### Setting up .env
 
@@ -254,15 +255,16 @@ grep(query="import", path="src")
 
 ---
 
-## ReAct Agent Architecture
+## Native Tool Calling Architecture
 
-GNX uses the ReAct (Reasoning + Acting) pattern:
+GNX uses **native tool calling** with Llama 4 Scout:
 
-1. **Reasoning** - Gemma thinks about the problem
-2. **Acting** - Executes tools based on reasoning
-3. **Observation** - Analyzes results and loops
+1. **Understanding** - Llama 4 Scout understands user intent and sees screenshots natively
+2. **Tool Selection** - Model decides which tools to call (native function calling)
+3. **Execution** - Tools are executed and results returned
+4. **Observation** - Analyzes results and continues or completes
 
-The ReAct adapter provides intelligent tool selection and automatic retry logic.
+The NativeToolAdapter provides intelligent tool orchestration with multimodal support.
 
 ---
 
@@ -277,7 +279,8 @@ GNX CLI/
 ├── src/
 │   ├── gnx_engine/
 │   │   ├── engine.py      # Main GNX engine
-│   │   └── adapters.py    # ReAct adapter for tool orchestration
+│   │   ├── adapters.py    # NativeToolAdapter for tool orchestration
+│   │   └── prompts.py     # System prompts for Llama 4 Scout
 │   ├── tools/
 │   │   ├── base.py        # Base tool utilities
 │   │   ├── computer_use.py     # Desktop automation ✨ NEW
@@ -309,21 +312,21 @@ The `.env.example` file documents the configurable keys that GNX CLI reads at ru
 # GNX CLI Environment Variables
 # Copy this file to .env and fill in your API keys
 
-# Google Gemini API Key (for Gemini models)
-GOOGLE_API_KEY=your_google_api_key_here
-
-# Groq API Key (for Llama, Mixtral, and other Groq-hosted models)
+# Groq API Key (for Llama 4 Scout - PRIMARY)
 GROQ_API_KEY=your_groq_api_key_here
+
+# Google Gemini API Key (fallback/alternative)
+GOOGLE_API_KEY=your_google_api_key_here
 
 # HuggingFace Token (for V_action vision model in computer_use)
 HF_TOKEN=your_huggingface_token_here
 
-# Default provider: "gemini" or "groq"
-GNX_DEFAULT_PROVIDER=gemini
+# Default provider: "groq" (recommended) or "gemini"
+GNX_DEFAULT_PROVIDER=groq
 
 # Default model names (optional - will use defaults if not set)
-# GEMINI_MODEL=gemma-3-27b-it
 # GROQ_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
+# GEMINI_MODEL=gemini-1.5-flash
 ```
 
 
@@ -331,14 +334,13 @@ GNX_DEFAULT_PROVIDER=gemini
 
 ## Key Technologies
 
-- **Gemma 3** - LLM for reasoning and planning (27B-IT model)
-- **V_action (Qwen3-VL)** - Vision-Language model for precise coordinate detection
+- **Llama 4 Scout** - Multimodal LLM with native tool calling (128K context)
 - **LangChain** - Agent framework and tool management
+- **Groq** - Fast inference API for Llama 4 Scout
 - **Rich** - Beautiful terminal UI
 - **PyAutoGUI** - Desktop automation
 - **MSS** - Screenshot capture
 - **ADB** - Mobile device control (via subprocess)
-- **Google Generative AI** - Gemma API access
 
 ---
 

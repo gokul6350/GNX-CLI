@@ -1,12 +1,13 @@
-import re
 import json
 import logging
 import time
+import os
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage, ToolMessage
 from langchain_core.language_models import BaseChatModel
-from . import engine
-from .prompts import build_react_system_prompt
+from .prompts import build_system_prompt
 from src.utils.logger_client import history_logger
+from src.utils.debug_logger import debug
+
 # Configure logging to file
 logging.basicConfig(
     filename='app0.log',
@@ -19,33 +20,38 @@ logger = logging.getLogger(__name__)
 # Import display functions for live output
 from src.ui.display import print_tool_call, print_tool_result, console
 
-class ReActAdapter:
+
+class NativeToolAdapter:
     """
-    Wraps a ChatModel to support ReAct-style prompting with actual tool execution.
-    Required for models like Gemma 3 that don't support native function calling.
-    This adapter handles the complete ReAct loop: parse output, execute tools, loop until final answer.
+    Adapter for LLMs with native tool calling support (like Llama 4 Scout).
+    Uses LangChain's bind_tools() and handles tool_calls from AIMessage.
+    Supports multimodal inputs (images) for vision-capable models.
     """
-    MAX_ITERATIONS = 10  # Prevent infinite loops
+    MAX_ITERATIONS = 15  # Prevent infinite loops
+    MAX_IMAGES_IN_CONTEXT = 1  # Only keep the latest screenshot in context to save tokens
     
     def __init__(self, model: BaseChatModel):
         self.model = model
         self.tools = []
         self.tool_map = {}
-        self.image_message_limit = 2
+        self.model_with_tools = None
         
     def bind_tools(self, tools, **kwargs):
-        """Intercept tool binding and store tools for prompt generation."""
-        logger.debug(f"ReActAdapter.bind_tools called with {len(tools)} tools")
+        """Bind tools to the model using native tool calling."""
+        logger.debug(f"NativeToolAdapter.bind_tools called with {len(tools)} tools")
         self.tools = tools
         self.tool_map = {}
         for t in tools:
             name = getattr(t, "name", str(t))
             self.tool_map[name] = t
             logger.debug(f"Registered tool: {name}")
+        
+        # Use LangChain's native bind_tools
+        self.model_with_tools = self.model.bind_tools(tools, tool_choice="auto")
         return self
         
     def bind(self, *args, **kwargs):
-        logger.debug(f"ReActAdapter.bind called with args={args} kwargs={kwargs.keys()}")
+        logger.debug(f"NativeToolAdapter.bind called with args={args} kwargs={kwargs.keys()}")
         if "tools" in kwargs or "functions" in kwargs:
             logger.debug("Intercepting tools in bind()")
             if "tools" in kwargs:
@@ -54,94 +60,6 @@ class ReActAdapter:
 
     def __getattr__(self, name):
         return getattr(self.model, name)
-    
-    def _parse_react_output(self, content: str):
-        """Parse ReAct output to extract action and action input."""
-        # Pattern to match Action: tool_name and Action Input: {...}
-        action_pattern = re.compile(
-            r"Action:\s*([^\n]+)\s*\nAction Input:\s*(.*?)(?=\n\n|$)", 
-            re.DOTALL | re.IGNORECASE
-        )
-        match = action_pattern.search(content)
-        
-        if match:
-            action_name = match.group(1).strip()
-            action_input_str = match.group(2).strip()
-            
-            # Skip if action is None or empty
-            if action_name.lower() in ['none', 'n/a', ''] or not action_name:
-                logger.debug(f"Skipping None/empty action")
-                return None, None
-            
-            # Clean up potential markdown or extra chars
-            action_input_str = action_input_str.strip('`').strip()
-            if action_input_str.startswith('json'):
-                action_input_str = action_input_str[4:].strip()
-            
-            logger.debug(f"Parsed action: {action_name}, input: {action_input_str}")
-            
-            try:
-                args = json.loads(action_input_str)
-            except json.JSONDecodeError:
-                # Try to fix common JSON issues or treat as single string arg
-                logger.debug(f"JSON parse failed, attempting recovery")
-                args = {"input": action_input_str}
-            
-            # Fix paths: remove leading slash for relative paths
-            if 'path' in args and isinstance(args['path'], str):
-                path = args['path']
-                # Remove leading / for relative paths (common mistake)
-                if path.startswith('/') and not path.startswith('//'):
-                    args['path'] = path.lstrip('/')
-                    logger.debug(f"Fixed path: {path} -> {args['path']}")
-                
-            return action_name, args
-        
-        return None, None
-
-    def _parse_screenshot_payload(self, tool_result: str):
-        """Extract screenshot payload if tool_result is JSON with data_url."""
-        try:
-            obj = json.loads(tool_result)
-            if isinstance(obj, dict) and obj.get("type") == "screenshot" and obj.get("data_url"):
-                return obj
-        except Exception:
-            return None
-        return None
-
-    def _build_screenshot_message(self, payload: dict) -> HumanMessage:
-        """Build a multimodal message with text + image for the main model.
-        
-        Args:
-            payload: Screenshot payload dict with path, width, height, data_url, note
-        """
-        width = payload.get("width")
-        height = payload.get("height")
-        size_str = f"{width}x{height}" if width and height else "unknown"
-        note = payload.get("note", "")
-        path = payload.get("path", "unknown")
-        data_url = payload.get("data_url", "")
-        
-        # Build text observation
-        text_parts = [
-            f"Observation: Screenshot {size_str} from {path}"
-        ]
-        if note:
-            text_parts.append(f"({note})")
-        
-        # Proper multimodal format for LangChain
-        content = [
-            {"type": "text", "text": " ".join(text_parts)},
-        ]
-        
-        # Add image if data_url is available
-        if data_url:
-            content.append({
-                "type": "image_url",
-                "image_url": {"url": data_url},
-            })
-        
-        return HumanMessage(content=content)
     
     def _execute_tool(self, tool_name: str, args: dict) -> str:
         """Execute a tool and return its result."""
@@ -160,40 +78,108 @@ class ReActAdapter:
                 result = tool.invoke(args)
             else:
                 result = tool(**args)
-            logger.debug(f"Tool result: {result[:200] if len(str(result)) > 200 else result}")
+            logger.debug(f"Tool result: {str(result)[:200]}...")
             return str(result)
         except Exception as e:
             error_msg = f"Error executing {tool_name}: {e}"
             logger.error(error_msg)
             return error_msg
-    
-    def _build_messages_for_gemma(self, messages: list) -> list:
-        """Convert messages to Gemma-compatible format (no SystemMessage)."""
-        final_messages = []
-        system_content = ""
+
+    def _parse_screenshot_payload(self, tool_result: str):
+        """Extract screenshot payload if tool_result is JSON with data_url."""
+        try:
+            obj = json.loads(tool_result)
+            if isinstance(obj, dict) and obj.get("type") == "screenshot" and obj.get("data_url"):
+                return obj
+        except Exception:
+            return None
+        return None
+
+    def _clean_tool_result_for_context(self, tool_result: str, tool_name: str) -> str:
+        """
+        Clean tool result by removing large base64 data before adding to conversation.
+        This prevents inflating token count with image data that's already in an image message.
+        """
+        if tool_name == "computer_screenshot":
+            try:
+                obj = json.loads(tool_result)
+                if isinstance(obj, dict) and obj.get("data_url"):
+                    # Keep metadata but remove the massive base64 string
+                    cleaned = {
+                        "type": obj.get("type"),
+                        "path": obj.get("path"),
+                        "width": obj.get("width"),
+                        "height": obj.get("height"),
+                        "note": obj.get("note", ""),
+                        "data_url": "<image_data_moved_to_multimodal_message>"
+                    }
+                    debug.tool(f"Cleaned screenshot result", {
+                        "original_len": len(tool_result),
+                        "cleaned_len": len(json.dumps(cleaned)),
+                        "saved": f"{(len(tool_result) - len(json.dumps(cleaned))) / 1024:.1f} KB"
+                    })
+                    return json.dumps(cleaned)
+            except Exception as e:
+                debug.warn(f"Failed to clean tool result: {e}")
+        return tool_result
+
+    def _build_image_message_content(self, text: str, data_url: str = None) -> list:
+        """Build multimodal content list with text and optional image."""
+        content = [{"type": "text", "text": text}]
+        if data_url:
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": data_url}
+            })
+        return content
+
+    def _strip_images_from_message(self, message: HumanMessage) -> HumanMessage:
+        """Replace image content with placeholder text for token optimization."""
+        if not isinstance(message.content, list):
+            return message
         
-        for m in messages:
-            if isinstance(m, SystemMessage):
-                system_content += m.content + "\n\n"
-            elif isinstance(m, ToolMessage):
-                # Convert tool result to human message
-                tool_result = f"Observation: {m.content}"
-                final_messages.append(HumanMessage(content=tool_result))
+        new_content = []
+        for part in message.content:
+            if isinstance(part, dict) and part.get("type") == "image_url":
+                new_content.append({
+                    "type": "text",
+                    "text": "<system>THE IMAGE IS NOT AVAILABLE DUE TO TOKEN OPTIMIZATION</system>"
+                })
             else:
-                final_messages.append(m)
+                new_content.append(part)
         
-        if system_content:
-            if final_messages and isinstance(final_messages[0], HumanMessage):
-                original_first = final_messages[0]
-                new_first = HumanMessage(content=system_content + str(original_first.content))
-                final_messages[0] = new_first
-            else:
-                final_messages.insert(0, HumanMessage(content=system_content))
+        return HumanMessage(content=new_content)
+
+    def _optimize_images_in_conversation(self, messages: list) -> list:
+        """Keep only the latest N images in conversation, replace older ones with placeholder."""
+        # Find all messages with images (track indices)
+        image_indices = []
+        for i, msg in enumerate(messages):
+            if isinstance(msg, HumanMessage) and isinstance(msg.content, list):
+                for part in msg.content:
+                    if isinstance(part, dict) and part.get("type") == "image_url":
+                        image_indices.append(i)
+                        break
         
-        return final_messages
+        # If we have more images than allowed, strip older ones
+        if len(image_indices) > self.MAX_IMAGES_IN_CONTEXT:
+            indices_to_strip = image_indices[:-self.MAX_IMAGES_IN_CONTEXT]
+            optimized = []
+            for i, msg in enumerate(messages):
+                if i in indices_to_strip:
+                    optimized.append(self._strip_images_from_message(msg))
+                else:
+                    optimized.append(msg)
+            return optimized
+        
+        return messages
 
     def invoke(self, input, **kwargs):
-        logger.debug(f"ReActAdapter.invoke called. Kwargs keys: {list(kwargs.keys())}")
+        """Execute the tool calling loop with native tool support."""
+        logger.debug(f"NativeToolAdapter.invoke called. Kwargs keys: {list(kwargs.keys())}")
+        
+        if self.model_with_tools is None:
+            raise ValueError("Tools not bound. Call bind_tools() first.")
         
         # Extract messages from input
         messages = input if isinstance(input, list) else input.get("messages", [])
@@ -201,40 +187,33 @@ class ReActAdapter:
         msg_types = [type(m).__name__ for m in messages]
         logger.debug(f"Input message types: {msg_types}")
         
-        # Build the ReAct system prompt
+        # Build the system prompt
         if self.tools:
-            react_prompt = build_react_system_prompt(self.tools, self.tool_map)
-            messages = [SystemMessage(content=react_prompt)] + list(messages)
+            system_prompt = build_system_prompt(self.tools, self.tool_map)
+            messages = [SystemMessage(content=system_prompt)] + list(messages)
         
-        # Strip tool-related kwargs
-        for key in list(kwargs.keys()):
-            if any(x in key.lower() for x in ['tool', 'function', 'bind', 'tool_choice']):
-                kwargs.pop(key, None)
-        
-        # ReAct loop
+        # Tool calling loop
         iteration = 0
         conversation = list(messages)
         max_retries = 3
         retry_count = 0
-        image_message_indices = []
-        screenshot_payloads = {}  # Track payloads by message index
         
         while iteration < self.MAX_ITERATIONS:
             iteration += 1
-            logger.debug(f"ReAct iteration {iteration}")
+            logger.debug(f"Tool calling iteration {iteration}")
             
-            # Convert to Gemma-compatible format
-            gemma_messages = self._build_messages_for_gemma(conversation)
+            # Optimize images in conversation to save tokens
+            optimized_conversation = self._optimize_images_in_conversation(conversation)
             
-            # Count tokens before sending (includes image tokens from data_urls)
+            # Count tokens before sending
             from src.utils.token_counter import count_messages_tokens
-            token_count = count_messages_tokens(gemma_messages)
+            token_count = count_messages_tokens(optimized_conversation)
             console.print(f"[dim]📊 Sending {token_count:,} tokens to model...[/dim]")
             
-            # Call the model with spinner animation and retry logic
+            # Call the model with native tool calling
             try:
                 with console.status("[bold cyan]  thinking...[/bold cyan]", spinner="dots"):
-                    response = self.model.invoke(gemma_messages, **kwargs)
+                    response = self.model_with_tools.invoke(optimized_conversation, **kwargs)
                 retry_count = 0  # Reset retry count on success
             except Exception as e:
                 error_str = str(e)
@@ -256,110 +235,100 @@ class ReActAdapter:
                     logger.error(f"Model invoke failed: {e}")
                     raise e
             
-            content = response.content
-            logger.debug(f"Model response: {content[:300]}...")
+            content = response.content or ""
+            logger.debug(f"Model response content: {content[:300]}...")
             
-            # Log AI Thought/Action (Intermediate)
-            history_logger.log("ai", content, is_context=False)
-
-            # Parse for tool call
-            action_name, action_args = self._parse_react_output(content)
+            # Log AI response (including any text before tool calls)
+            if content:
+                history_logger.log("ai", content, is_context=False)
             
-            if action_name:
+            # Check for tool calls in the response
+            tool_calls = getattr(response, 'tool_calls', None) or []
+            
+            if not tool_calls:
+                # No tool calls - this is the final answer
+                logger.debug("No tool calls detected, returning final response")
+                return response
+            
+            # Process each tool call
+            conversation.append(response)  # Add AI message with tool calls
+            
+            for tool_call in tool_calls:
+                tool_name = tool_call.get('name', '')
+                tool_args = tool_call.get('args', {})
+                tool_id = tool_call.get('id', f'call_{iteration}')
+                
                 # Print tool call LIVE
-                args_str = json.dumps(action_args) if action_args else "{}"
-                print_tool_call(action_name, args_str)
+                args_str = json.dumps(tool_args) if tool_args else "{}"
+                print_tool_call(tool_name, args_str)
                 
                 # Execute the tool
-                tool_result = self._execute_tool(action_name, action_args)
+                tool_result = self._execute_tool(tool_name, tool_args)
                 
-                # Log Tool Result
-                history_logger.log("tool_result", tool_result, is_context=False, metadata={"tool": action_name})
+                # Log Tool Result (full version with base64 for history)
+                history_logger.log("tool_result", tool_result, is_context=False, metadata={"tool": tool_name})
                 
-                # Try to extract screenshot payload for image-aware history
+                # Check for screenshot payload
                 screenshot_payload = None
-                if action_name == "computer_screenshot":
+                if tool_name == "computer_screenshot":
                     screenshot_payload = self._parse_screenshot_payload(tool_result)
-
-                # Check for image paths in tool result (auto-log images)
-                import os
+                
+                # Log images if found
                 if screenshot_payload and screenshot_payload.get("path") and os.path.exists(screenshot_payload.get("path")):
                     history_logger.log_image(screenshot_payload.get("path"))
                 elif isinstance(tool_result, str) and any(ext in tool_result.lower() for ext in ['.png', '.jpg', '.jpeg']):
                     possible_path = tool_result.strip()
-                    # Handle potential "Screenshot saved to: path" format
                     if ": " in possible_path:
                         possible_path = possible_path.split(": ")[-1].strip()
-                    
                     if os.path.exists(possible_path) and os.path.isfile(possible_path):
                         history_logger.log_image(possible_path)
-
-                # Print tool result LIVE
-                print_tool_result(tool_result)
                 
-                # Add AI response and tool result to conversation
-                conversation.append(AIMessage(content=content))
-                if screenshot_payload:
-                    # Always include the image in multimodal format for first 2 screenshots
-                    # For older ones, strip the data_url to save tokens
-                    if len(image_message_indices) < self.image_message_limit:
-                        # Include full image data
-                        obs_message = self._build_screenshot_message(screenshot_payload)
-                    else:
-                        # Remove data_url to save tokens
-                        payload_copy = screenshot_payload.copy()
-                        payload_copy["data_url"] = ""
-                        obs_message = self._build_screenshot_message(payload_copy)
-                    
-                    msg_idx = len(conversation)
-                    conversation.append(obs_message)
-                    image_message_indices.append(msg_idx)
-                    screenshot_payloads[msg_idx] = screenshot_payload
-                    
-                    # Keep only the latest N screenshots with images
-                    if len(image_message_indices) > self.image_message_limit:
-                        drop_index = image_message_indices.pop(0)
-                        # Replace with text-only version (no image)
-                        old_payload = screenshot_payloads.get(drop_index)
-                        if old_payload:
-                            payload_copy = old_payload.copy()
-                            payload_copy["data_url"] = ""
-                            lightweight_msg = self._build_screenshot_message(payload_copy)
-                            conversation[drop_index] = lightweight_msg
-                else:
-                    conversation.append(HumanMessage(content=f"Observation: {tool_result}"))
+                # Clean tool result for display (removes large base64 data from console output)
+                cleaned_result = self._clean_tool_result_for_context(tool_result, tool_name)
                 
-                logger.debug(f"Tool executed, continuing loop")
-            else:
-                # No tool call - this is the final answer
-                logger.debug("No tool call detected, returning final response")
-                # Clean up the response - remove any ReAct artifacts
-                response.content = self._clean_final_response(content)
-                return response
+                # Print cleaned tool result LIVE (without huge base64 data in console)
+                print_tool_result(cleaned_result)
+                tool_message = ToolMessage(
+                    content=cleaned_result,
+                    tool_call_id=tool_id,
+                    name=tool_name
+                )
+                conversation.append(tool_message)
+                debug.tool(f"Added ToolMessage for {tool_name}", {
+                    "content_len": len(cleaned_result)
+                })
+                
+                # If screenshot with image, add as multimodal message for model to see
+                if screenshot_payload and screenshot_payload.get("data_url"):
+                    width = screenshot_payload.get("width", "?")
+                    height = screenshot_payload.get("height", "?")
+                    path = screenshot_payload.get("path", "screenshot")
+                    note = screenshot_payload.get("note", "")
+                    
+                    obs_text = f"Screenshot captured ({width}x{height}) from {path}"
+                    if note:
+                        obs_text += f" - {note}"
+                    
+                    # Add multimodal observation with image
+                    image_content = self._build_image_message_content(
+                        obs_text,
+                        screenshot_payload.get("data_url")
+                    )
+                    conversation.append(HumanMessage(content=image_content))
+                    
+                    debug.image(f"Added screenshot to conversation", {
+                        "dimensions": f"{width}x{height}",
+                        "path": path,
+                        "data_url_len": f"{len(screenshot_payload.get('data_url', '')) / 1024:.1f} KB"
+                    })
+                    logger.debug(f"Added screenshot image to conversation")
+            
+            logger.debug(f"Processed {len(tool_calls)} tool calls, continuing loop")
         
         # Max iterations reached
         logger.warning(f"Max iterations ({self.MAX_ITERATIONS}) reached")
-        response.content = self._clean_final_response(response.content)
         return response
-    
-    def _clean_final_response(self, content: str) -> str:
-        """Remove ReAct formatting artifacts from final response."""
-        import re
-        
-        # Remove "Thought: ..." lines
-        content = re.sub(r'^Thought:.*?\n?', '', content, flags=re.MULTILINE)
-        
-        # Remove "Action: None" or "Action: none" lines (model bad habit)
-        content = re.sub(r'^Action:\s*[Nn]one\s*\n?', '', content, flags=re.MULTILINE)
-        
-        # Remove any other "Action: ..." and "Action Input: ..." if present
-        content = re.sub(r'^Action:.*?\n?', '', content, flags=re.MULTILINE)
-        content = re.sub(r'^Action Input:.*?\n?', '', content, flags=re.MULTILINE | re.DOTALL)
-        
-        # Remove "Observation: ..." lines that might leak through
-        content = re.sub(r'^Observation:.*?\n?', '', content, flags=re.MULTILINE)
-        
-        # Clean up excessive whitespace
-        content = re.sub(r'\n{3,}', '\n\n', content)
-        
-        return content.strip()
+
+
+# Alias for backwards compatibility
+ReActAdapter = NativeToolAdapter

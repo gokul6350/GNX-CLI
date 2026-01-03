@@ -1,14 +1,15 @@
 from .gemini import GEMINI_CONFIG, create_gemini_llm
 from .groq import GROQ_CONFIG, create_groq_llm
 
+# Groq with Llama 4 Scout is the primary/default provider
 PROVIDERS = {
-    "gemini": {
-        **GEMINI_CONFIG,
-        "factory": create_gemini_llm
-    },
     "groq": {
         **GROQ_CONFIG,
         "factory": create_groq_llm
+    },
+    "gemini": {
+        **GEMINI_CONFIG,
+        "factory": create_gemini_llm
     }
 }
 

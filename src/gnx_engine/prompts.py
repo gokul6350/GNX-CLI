@@ -1,15 +1,15 @@
-"""Prompt utilities for the GNX ReAct adapter."""
+"""Prompt utilities for the GNX native tool calling adapter."""
 
 from typing import Any, Mapping, Sequence
 
 COMPUTER_USE_INSTRUCTIONS = """WINDOWS / DESKTOP USE INSTRUCTIONS
-(CRITICAL – STRICTLY ENFORCED)
+(CRITICAL - STRICTLY ENFORCED)
 
 =================================
 ABSOLUTE RULES (NO EXCEPTIONS)
 =================================
 
-1. ACTION–SCREENSHOT PAIRING (MANDATORY)
+1. ACTION-SCREENSHOT PAIRING (MANDATORY)
    - You are NOT allowed to issue two consecutive action calls.
    - Action calls are: computer_control, computer_type_text
    - EVERY action call MUST be followed immediately by computer_screenshot
@@ -40,7 +40,7 @@ STANDARD WINDOWS WORKFLOW
 When the user asks to interact with the desktop or Windows apps:
 
 Step 1: Observe initial state
-  Action: computer_screenshot
+  -> Call computer_screenshot tool
 
 Step 2: Decide next step
   - Based ONLY on what you see in the screenshot
@@ -48,12 +48,12 @@ Step 2: Decide next step
     describing exactly what to click or interact with
 
 Step 3: Perform EXACTLY ONE action
-  Action: computer_control OR computer_type_text
+  -> Call computer_control OR computer_type_text tool
 
 Step 4: Verify result
-  Action: computer_screenshot
+  -> Call computer_screenshot tool
 
-Step 5: Repeat Steps 2–4 until the goal is achieved
+Step 5: Repeat Steps 2-4 until the goal is achieved
 
 
 =================================
@@ -69,7 +69,7 @@ Allowed instruction verbs:
 
 Rules:
 - BE EXTREMELY PRECISE
-- Describe the UI element’s:
+- Describe the UI element's:
   - screen position (top-left, bottom-right, center, etc.)
   - color
   - label or icon text
@@ -99,24 +99,24 @@ CRITICAL APP VISIBILITY RULE
 EXAMPLE: OPEN CALCULATOR
 =================================
 
-1. computer_screenshot
-2. computer_control("Click the Start button at the bottom-left corner")
-3. computer_screenshot
-4. computer_type_text("calculator")
-5. computer_screenshot
-6. computer_control("Click the Calculator app in the search results")
-7. computer_screenshot
+1. Call computer_screenshot
+2. Call computer_control with instruction="Click the Start button at the bottom-left corner"
+3. Call computer_screenshot
+4. Call computer_type_text with text="calculator"
+5. Call computer_screenshot
+6. Call computer_control with instruction="Click the Calculator app in the search results"
+7. Call computer_screenshot
 8. Verify Calculator window is visible
 
 """
 
-MOBILE_USE_INSTRUCTIONS = """MOBILE USE INSTRUCTIONS (CRITICAL – STRICTLY ENFORCED)
+MOBILE_USE_INSTRUCTIONS = """MOBILE USE INSTRUCTIONS (CRITICAL - STRICTLY ENFORCED)
 
 ==============================
 ABSOLUTE RULES (NO EXCEPTIONS)
 ==============================
 
-1. ACTION–SCREENSHOT PAIRING (MANDATORY)
+1. ACTION-SCREENSHOT PAIRING (MANDATORY)
    - You are NOT allowed to issue two consecutive action calls.
    - Action calls are: mobile_control, mobile_type_text
    - EVERY action call MUST be followed immediately by mobile_screenshot
@@ -145,13 +145,13 @@ STANDARD MOBILE WORKFLOW
 When the user asks to interact with a mobile device:
 
 Step 1: Discover devices
-  Action: mobile_devices
+  -> Call mobile_devices tool
 
 Step 2: Connect to device
-  Action: mobile_connect
+  -> Call mobile_connect tool
 
 Step 3: Observe initial state
-  Action: mobile_screenshot
+  -> Call mobile_screenshot tool
 
 Step 4: Decide next step
   - Based ONLY on what you see in the screenshot
@@ -159,12 +159,12 @@ Step 4: Decide next step
     exactly what to tap or interact with
 
 Step 5: Perform EXACTLY ONE action
-  Action: mobile_control OR mobile_type_text
+  -> Call mobile_control OR mobile_type_text tool
 
 Step 6: Verify result
-  Action: mobile_screenshot
+  -> Call mobile_screenshot tool
 
-Step 7: Repeat Steps 4–6 until the goal is achieved
+Step 7: Repeat Steps 4-6 until the goal is achieved
 
 
 ==============================
@@ -181,7 +181,7 @@ Allowed instruction verbs:
 
 Rules:
 - BE EXTREMELY PRECISE
-- Describe the UI element’s:
+- Describe the UI element's:
   - location (top/bottom/left/right/center)
   - color
   - icon/label text
@@ -210,11 +210,11 @@ CRITICAL APP VISIBILITY RULE
 EXAMPLE: OPEN WHATSAPP
 ==============================
 
-1. mobile_devices
-2. mobile_connect
-3. mobile_screenshot
-4. mobile_control("Tap the green WhatsApp icon with a white phone logo")
-5. mobile_screenshot
+1. Call mobile_devices
+2. Call mobile_connect
+3. Call mobile_screenshot
+4. Call mobile_control with instruction="Tap the green WhatsApp icon with a white phone logo"
+5. Call mobile_screenshot
 6. Verify WhatsApp UI is visible before proceeding
 
 """
@@ -229,54 +229,49 @@ When the user needs to navigate or interact with desktop UI elements directly, f
 
 Example workflow for "click the Save button in Notepad":
 Step 1: List windows to confirm Notepad is open
-    Action: ui_list_windows
-    Action Input: {}
+    -> Call ui_list_windows tool
 
 Step 2: Inspect the UI tree if needed
-    Action: ui_scan_ui_tree
-    Action Input: {"window_title": "Notepad", "max_depth": 2}
+    -> Call ui_scan_ui_tree tool with window_title="Notepad", max_depth=2
 
 Step 3: Click the Save button
-    Action: ui_click_element
-    Action Input: {"window_title": "Notepad", "element_name": "Save"}
+    -> Call ui_click_element tool with window_title="Notepad", element_name="Save"
 
 Step 4: Capture a screenshot after clicking
-    Action: ui_capture_window_screenshot
-    Action Input: {"window_title": "Notepad"}
+    -> Call ui_capture_window_screenshot tool with window_title="Notepad"
 
 DO NOT forget to cite the correct window title and element name when calling UI tools!
 """
 
-CRITICAL_RULES_SECTION = (
-    "CRITICAL RULES:\n"
-    "1. NEVER use Action: None - just provide your answer directly without Action/Action Input\n"
-    "2. Use RELATIVE paths (e.g., 'file.txt' or './folder/file.txt'), NOT absolute paths starting with /\n"
-    "3. Use the exact parameter names from the tool descriptions\n"
-    "4. If user provides a specific URL or says 'fetch', use fetch_url tool to directly access that URL\n"
-    "5. Use web_search for general queries, use fetch_url when you have an exact URL to check\n"
-    "6. For computer/desktop tasks, use computer_screenshot and computer_control tools\n"
-    "7. For mobile/phone tasks, use mobile_screenshot and mobile_control tools\n\n"
-)
+CRITICAL_RULES_SECTION = """CRITICAL RULES:
+1. Use RELATIVE paths (e.g., 'file.txt' or './folder/file.txt'), NOT absolute paths starting with /
+2. Use the exact parameter names from the tool descriptions
+3. If user provides a specific URL or says 'fetch', use fetch_url tool to directly access that URL
+4. Use web_search for general queries, use fetch_url when you have an exact URL to check
+5. For computer/desktop tasks, use computer_screenshot and computer_control tools
+6. For mobile/phone tasks, use mobile_screenshot and mobile_control tools
+7. When viewing screenshots, analyze the visual content carefully to guide your next actions
 
-EXAMPLES_SECTION = (
-    "Examples:\n"
-    "- ls tool: Action Input: {\"path\": \".\"}\n"
-    "- read_file tool: Action Input: {\"path\": \"main.py\"}\n"
-    "- fetch_url tool: Action Input: {\"url\": \"example.com\"}\n"
-    "- web_search tool: Action Input: {\"query\": \"python tutorials\"}\n"
-    "- computer_screenshot tool: Action Input: {}\n"
-    "- computer_control tool: Action Input: {\"instruction\": \"Click on the Start button\"}\n"
-    "- mobile_control tool: Action Input: {\"instruction\": \"Tap on Settings app\"}\n"
-    "- ui_list_windows tool: Action Input: {}\n"
-    "- ui_scan_ui_tree tool: Action Input: {\"window_title\": \"Calculator\", \"max_depth\": 3}\n"
-    "- ui_click_element tool: Action Input: {\"window_title\": \"Calculator\", \"element_name\": \"Seven\"}\n"
-    "- ui_type_into_element tool: Action Input: {\"window_title\": \"Notepad\", \"element_name\": \"Text Editor\", \"text\": \"hello\"}\n"
-    "- ui_capture_window_screenshot tool: Action Input: {\"window_title\": \"Calculator\"}\n"
-)
+"""
+
+EXAMPLES_SECTION = """Tool Usage Examples:
+- ls tool: {"path": "."}
+- read_file tool: {"path": "main.py"}
+- fetch_url tool: {"url": "example.com"}
+- web_search tool: {"query": "python tutorials"}
+- computer_screenshot tool: {}
+- computer_control tool: {"instruction": "Click on the Start button"}
+- mobile_control tool: {"instruction": "Tap on Settings app"}
+- ui_list_windows tool: {}
+- ui_scan_ui_tree tool: {"window_title": "Calculator", "max_depth": 3}
+- ui_click_element tool: {"window_title": "Calculator", "element_name": "Seven"}
+- ui_type_into_element tool: {"window_title": "Notepad", "element_name": "Text Editor", "text": "hello"}
+- ui_capture_window_screenshot tool: {"window_title": "Calculator"}
+"""
 
 
-def build_react_system_prompt(tools: Sequence[Any], tool_map: Mapping[str, Any]) -> str:
-    """Return the system prompt that should precede ReAct-based conversations."""
+def build_system_prompt(tools: Sequence[Any], tool_map: Mapping[str, Any]) -> str:
+    """Return the system prompt for native tool calling conversations."""
 
     tool_desc = "\n".join([f"- {getattr(tool, 'name', str(tool))}: {getattr(tool, 'description', '')}" for tool in tools])
     has_computer_use = "computer_control" in tool_map
@@ -284,16 +279,13 @@ def build_react_system_prompt(tools: Sequence[Any], tool_map: Mapping[str, Any])
     has_ui_automation = "ui_list_windows" in tool_map
 
     prompt = (
-        "You are a helpful AI assistant powered by GNX CLI, which is powered by the GNX ENGINE - "
-        "a uniquely designed, cost-effective AI system using gemma-3-27b-it as the brain model and QwenVL-8B-it as the action model. "
+        "You are a helpful AI assistant powered by GNX CLI, which uses the GNX ENGINE - "
+        "a powerful AI system using Llama 4 Scout (meta-llama/llama-4-scout-17b-16e-instruct) with native tool calling and multimodal vision capabilities. "
         "Developed by Gokulbarath (https://gokulbarath.is-a.dev/)\n\n"
         f"Available Tools:\n{tool_desc}\n\n"
-        "When you need to use a tool, you MUST respond in this exact format:\n"
-        "Thought: [your reasoning about what to do]\n"
-        "Action: [exact tool name from the list above]\n"
-        "Action Input: [valid JSON object with the tool's parameters]\n\n"
-        "After receiving an Observation (tool result), continue reasoning.\n"
-        "When you have the final answer and don't need more tools, just provide your response WITHOUT any Action or Action Input lines.\n\n"
+        "You have native tool calling capabilities. When you need to use a tool, simply call it directly - "
+        "the system will handle tool execution and return results to you.\n\n"
+        "For tasks involving screenshots, you can see and analyze the images directly.\n\n"
     )
 
     prompt += (
@@ -305,3 +297,9 @@ def build_react_system_prompt(tools: Sequence[Any], tool_map: Mapping[str, Any])
     )
 
     return prompt
+
+
+# Alias for backwards compatibility
+def build_react_system_prompt(tools: Sequence[Any], tool_map: Mapping[str, Any]) -> str:
+    """Legacy alias - now uses build_system_prompt."""
+    return build_system_prompt(tools, tool_map)
