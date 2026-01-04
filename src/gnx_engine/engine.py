@@ -3,7 +3,7 @@ import logging
 import os
 import time
 from dotenv import load_dotenv
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
 from src.gnx_engine.providers import PROVIDERS, create_llm
 from src.tools.filesystem import ls
@@ -318,19 +318,26 @@ class GNXEngine:
                 print(quota_msg)
             
             # Invoke wrapped adapter (handles ReAct loop internally)
-            response = self.agent.invoke(messages)
+            # Returns the full conversation history including tool calls
+            full_conversation = self.agent.invoke(messages)
+            
+            # Get the final response (last message)
+            last_message = full_conversation[-1]
+            final_content = last_message.content if hasattr(last_message, 'content') else str(last_message)
             
             # Log Final Response
-            history_logger.log("ai", response.content, is_context=True)
+            history_logger.log("ai", final_content, is_context=True)
             
             # Track tokens used
-            self.tokens_used_this_minute += count_messages_tokens(messages)
+            self.tokens_used_this_minute += count_messages_tokens(full_conversation)
             
-            # Update history with both user and assistant messages
-            self.chat_history.append(HumanMessage(content=user_input))
-            self.chat_history.append(AIMessage(content=response.content))
+            # Update history with the full conversation state (excluding SystemMessage)
+            if len(full_conversation) > 0 and isinstance(full_conversation[0], SystemMessage):
+                self.chat_history = full_conversation[1:]
+            else:
+                self.chat_history = full_conversation
             
-            return response.content
+            return final_content
         except Exception as e:
             error_str = str(e)
             # Check for rate limit errors

@@ -44,7 +44,7 @@ Step 1: Observe initial state
 
 Step 2: Decide next step
   - Based ONLY on what you see in the screenshot
-  - Use computer_control with a NATURAL LANGUAGE instruction
+  - Use computer_control with a JSON instruction
     describing exactly what to click or interact with
 
 Step 3: Perform EXACTLY ONE action
@@ -68,31 +68,35 @@ Allowed instruction verbs:
 - Exit:          "Terminate"
 
 Rules:
-- BE EXTREMELY PRECISE
-- Describe the UI element's:
-  - screen position (top-left, bottom-right, center, etc.)
-  - color
-  - label or icon text
-  - surrounding context (taskbar, window title, menu, dialog)
+- YOU MUST PROVIDE THE INSTRUCTION AS A JSON STRING
+- The JSON must contain:
+  - "action": The action to perform (click, type, wait, terminate)
+  - "target": The name of the element (e.g., "Start button", "Chrome icon")
+  - "location": Approximate location (e.g., "bottom-left", "center")
+  - "description": Visual description (e.g., "Blue button with white text")
 
 Examples:
-- "Click the Start button at the bottom-left corner of the screen"
-- "Click the blue 'Send' button in the top-right of the window"
-- "Type calculator into the Start menu search box"
+- '{"action": "click", "target": "Start button", "location": "bottom-left", "description": "Windows logo icon"}'
+- '{"action": "type", "target": "Search box", "location": "bottom-left", "description": "Text field saying Type here to search", "text": "calculator"}'
 
 
 =================================
 CRITICAL APP VISIBILITY RULE
 =================================
 
-- If you just tried to open an application or window:
-  - VERIFY the app/window is actually visible and in focus
-  - Do NOT interact with internal UI elements unless confirmed
+- LOOK BEFORE YOU ACT:
+  - You (the Main AI) receive the screenshot. USE IT.
+  - If you cannot see the icon/button you want to click, DO NOT ask the tool to click it.
+  - The tool will fail if the element is not visible.
 
-- If the app/window is NOT visible:
-  - Retry the previous click (e.g., Start menu item)
-  - OR wait briefly and take another screenshot
-  - NEVER assume the app opened successfully
+- IF APP IS NOT VISIBLE:
+  - Desktop: Click "Start button" or press "win" key to search.
+  - Mobile: Swipe up (to open app drawer) or swipe left/right to look for it.
+  - NEVER hallucinate that you see an app if it's not there.
+
+- IF TOOL RETURNS "Element not found":
+  - Do not retry the same action.
+  - Try a different strategy (search, scroll, swipe).
 
 
 =================================
@@ -155,7 +159,7 @@ Step 3: Observe initial state
 
 Step 4: Decide next step
   - Based ONLY on what you see in the screenshot
-  - Use mobile_control with a NATURAL LANGUAGE instruction describing
+  - Use mobile_control with a JSON instruction describing
     exactly what to tap or interact with
 
 Step 5: Perform EXACTLY ONE action
@@ -180,16 +184,16 @@ Allowed instruction verbs:
 - Exit:     "Terminate"
 
 Rules:
-- BE EXTREMELY PRECISE
-- Describe the UI element's:
-  - location (top/bottom/left/right/center)
-  - color
-  - icon/label text
-  - surrounding context
+- YOU MUST PROVIDE THE INSTRUCTION AS A JSON STRING
+- The JSON must contain:
+  - "action": The action to perform (tap, swipe, type, wait, terminate)
+  - "target": The name of the element (e.g., "Settings app", "Back button")
+  - "location": Approximate location (e.g., "top-right", "center")
+  - "description": Visual description (e.g., "Gear icon", "Green button")
 
 Examples:
-- "Tap the circular red compose button at the bottom-right corner"
-- "Tap the Gmail app icon with a red-and-white envelope in the app drawer"
+- '{"action": "tap", "target": "WhatsApp", "location": "center", "description": "Green icon with phone logo"}'
+- '{"action": "swipe", "target": "Screen", "location": "center", "description": "Swipe up to scroll", "direction": "up"}'
 
 
 ==============================
@@ -260,8 +264,8 @@ EXAMPLES_SECTION = """Tool Usage Examples:
 - fetch_url tool: {"url": "example.com"}
 - web_search tool: {"query": "python tutorials"}
 - computer_screenshot tool: {}
-- computer_control tool: {"instruction": "Click on the Start button"}
-- mobile_control tool: {"instruction": "Tap on Settings app"}
+- computer_control tool: {"instruction": "{\"action\": \"click\", \"target\": \"Start button\", \"location\": \"bottom-left\", \"description\": \"Windows logo\"}"}
+- mobile_control tool: {"instruction": "{\"action\": \"tap\", \"target\": \"Settings\", \"location\": \"home screen\", \"description\": \"Gear icon\"}"}
 - ui_list_windows tool: {}
 - ui_scan_ui_tree tool: {"window_title": "Calculator", "max_depth": 3}
 - ui_click_element tool: {"window_title": "Calculator", "element_name": "Seven"}

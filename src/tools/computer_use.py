@@ -24,6 +24,10 @@ from mss import mss
 from openai import OpenAI
 from PIL import Image
 from langchain_core.tools import tool
+from dotenv import load_dotenv
+
+# Ensure .env is loaded and OVERRIDES any existing env vars
+load_dotenv(override=True)
 
 # Configuration
 HF_BASE_URL = "https://router.huggingface.co/v1"
@@ -46,6 +50,7 @@ class ActionResult:
     text: Optional[str] = None
     time: Optional[float] = None
     status: Optional[str] = None
+    description: Optional[str] = None
     raw: Optional[str] = None
 
 
@@ -55,8 +60,20 @@ def _get_client() -> OpenAI:
     if not token:
         raise ValueError(
             "HF_TOKEN not found in environment. "
-            "Please set HF_TOKEN in your .env file for V_action vision model."
+            "Please set HF_TOKEN in your .env file for V_action vision model. "
+            "Get a valid token from: https://huggingface.co/settings/tokens"
         )
+    # Verify token is not a placeholder
+    if token.startswith("your_") or len(token) < 10:
+        raise ValueError(
+            f"Invalid HF_TOKEN: '{token}'. "
+            "Please update HF_TOKEN in your .env file with a valid token from https://huggingface.co/settings/tokens"
+        )
+    
+    # Debug: Show what token is being used (masked)
+    masked_token = token[:10] + "..." + token[-5:] if len(token) > 15 else "***"
+    print(f"[DEBUG] Using HF_TOKEN: {masked_token}")
+    
     return OpenAI(base_url=HF_BASE_URL, api_key=token)
 
 
@@ -110,11 +127,15 @@ def _v_action(instruction: str, screenshot_data_url: str, screen_size: Tuple[int
         "- coordinate: [x, y] in 1000x1000 normalized grid (0-1000)\n"
         "- coordinate2: [x, y] for drag end point (only for drag action)\n"
         "- text: text to type (only for type action)\n"
+        "- description: brief description of the element (e.g., 'Start button', 'Chrome icon')\n"
         "- time: seconds to wait (only for wait action)\n"
         "- status: completion message (only for terminate action)\n\n"
+        "CRITICAL RULES:\n"
+        "1. If the target element is NOT visible, do NOT guess coordinates.\n"
+        "2. If the element is definitely not found, return: {\"action\": \"terminate\", \"status\": \"Element not found\"}\n\n"
         "Examples:\n"
-        '{\"action\": \"click\", \"coordinate\": [500, 500]}\n'
-        '{\"action\": \"type\", \"coordinate\": [500, 500], \"text\": \"hello\"}\n'
+        '{\"action\": \"click\", \"coordinate\": [500, 500], \"description\": \"Start button\"}\n'
+        '{\"action\": \"type\", \"coordinate\": [500, 500], \"text\": \"hello\", \"description\": \"Search box\"}\n'
         '{\"action\": \"scroll\", \"coordinate\": [500, 500], \"text\": \"down\"}\n'
         '{\"action\": \"terminate\", \"status\": \"Task completed successfully\"}\n\n'
         "Important: For Windows taskbar/Start button, coordinates are typically near bottom-left."
@@ -141,7 +162,16 @@ def _v_action(instruction: str, screenshot_data_url: str, screen_size: Tuple[int
         act.raw = raw
         return act
     except Exception as e:
-        return ActionResult(action="error", status=str(e), raw=str(e))
+        error_msg = str(e)
+        # Better error messages for auth failures
+        if "401" in error_msg or "Invalid username" in error_msg or "Unauthorized" in error_msg:
+            error_msg = (
+                f"HuggingFace authentication failed. Error: {error_msg}\n"
+                f"Your HF_TOKEN in .env may be invalid or expired.\n"
+                f"Get a new token from: https://huggingface.co/settings/tokens\n"
+                f"Make sure the token has 'read' permissions."
+            )
+        return ActionResult(action="error", status=error_msg, raw=str(e))
 
 
 def _parse_action_json(content: str) -> ActionResult:
@@ -162,6 +192,7 @@ def _parse_action_json(content: str) -> ActionResult:
                 text=obj.get("text"),
                 time=obj.get("time"),
                 status=obj.get("status"),
+                description=obj.get("description"),
             )
         except json.JSONDecodeError:
             pass
@@ -194,6 +225,7 @@ def _parse_action_json(content: str) -> ActionResult:
             text=data.get("text"),
             time=data.get("time"),
             status=data.get("status"),
+            description=data.get("description"),
         )
     except Exception:
         return ActionResult(action="error", status=f"Failed to parse: {content}")
@@ -358,6 +390,21 @@ def computer_control(instruction: str) -> str:
         Result of the action execution
     """
     try:
+        # Try to parse JSON instruction
+        try:
+            instr_json = json.loads(instruction)
+            if isinstance(instr_json, dict):
+                # Format structured instruction for vision model
+                formatted_instr = (
+                    f"Action: {instr_json.get('action', 'unknown')}\n"
+                    f"Target: {instr_json.get('target', 'unknown')}\n"
+                    f"Location: {instr_json.get('location', 'unknown')}\n"
+                    f"Description: {instr_json.get('description', '')}"
+                )
+                instruction = formatted_instr
+        except json.JSONDecodeError:
+            pass  # Use raw instruction if not JSON
+
         # Capture current screen state
         data_url, path, screen_size = _capture_screenshot()
         
@@ -373,6 +420,8 @@ def computer_control(instruction: str) -> str:
         # Build response
         response = f"Instruction: {instruction}\n"
         response += f"Action: {action_result.action}\n"
+        if action_result.description:
+            response += f"Description: {action_result.description}\n"
         if action_result.coordinate:
             px, py = _to_pixels(action_result.coordinate, screen_size)
             response += f"Coordinate: ({px}, {py})\n"

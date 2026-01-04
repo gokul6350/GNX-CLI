@@ -28,7 +28,7 @@ class NativeToolAdapter:
     Supports multimodal inputs (images) for vision-capable models.
     """
     MAX_ITERATIONS = 15  # Prevent infinite loops
-    MAX_IMAGES_IN_CONTEXT = 1  # Only keep the latest screenshot in context to save tokens
+    MAX_IMAGES_IN_CONTEXT = 3  # Keep last 3 screenshots in context
     
     def __init__(self, model: BaseChatModel):
         self.model = model
@@ -100,7 +100,7 @@ class NativeToolAdapter:
         Clean tool result by removing large base64 data before adding to conversation.
         This prevents inflating token count with image data that's already in an image message.
         """
-        if tool_name == "computer_screenshot":
+        if tool_name in ["computer_screenshot", "mobile_screenshot"]:
             try:
                 obj = json.loads(tool_result)
                 if isinstance(obj, dict) and obj.get("data_url"):
@@ -248,7 +248,8 @@ class NativeToolAdapter:
             if not tool_calls:
                 # No tool calls - this is the final answer
                 logger.debug("No tool calls detected, returning final response")
-                return response
+                conversation.append(response)
+                return conversation
             
             # Process each tool call
             conversation.append(response)  # Add AI message with tool calls
@@ -270,7 +271,7 @@ class NativeToolAdapter:
                 
                 # Check for screenshot payload
                 screenshot_payload = None
-                if tool_name == "computer_screenshot":
+                if tool_name in ["computer_screenshot", "mobile_screenshot"]:
                     screenshot_payload = self._parse_screenshot_payload(tool_result)
                 
                 # Log images if found
@@ -327,7 +328,7 @@ class NativeToolAdapter:
         
         # Max iterations reached
         logger.warning(f"Max iterations ({self.MAX_ITERATIONS}) reached")
-        return response
+        return conversation
 
 
 # Alias for backwards compatibility

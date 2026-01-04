@@ -244,6 +244,9 @@ Expected: Presses specified system button.
 
 ---
 
+## Robustness Improvements (Jan 2026)
+- **Element Not Found Handling**: Both `computer_control` and `mobile_control` now explicitly instruct the vision model to return "Element not found" if the target is not visible, preventing blind clicks/taps.
+
 ## Example Workflows
 
 ### Open Calculator on Desktop
