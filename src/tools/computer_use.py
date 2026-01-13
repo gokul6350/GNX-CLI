@@ -16,22 +16,18 @@ import os
 import threading
 import time
 import tkinter as tk
-from dataclasses import dataclass
 from typing import Optional, Tuple, Dict
 
 import pyautogui
 from mss import mss
-from openai import OpenAI
 from PIL import Image
 from langchain_core.tools import tool
 from dotenv import load_dotenv
 
+from src.gnx_engine.vl_provider import query_vl_model, to_pixels, ActionResult, log_step
+
 # Ensure .env is loaded and OVERRIDES any existing env vars
 load_dotenv(override=True)
-
-# Configuration
-HF_BASE_URL = "https://router.huggingface.co/v1"
-V_ACTION_MODEL = "Qwen/Qwen3-VL-8B-Instruct:fastest"  # Vision-Language model for actions
 
 HIGHLIGHT_DURATION = 1.5
 HIGHLIGHT_SIZE = 100
@@ -41,53 +37,23 @@ pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0.05
 
 
-@dataclass
-class ActionResult:
-    """Result from V_action model"""
-    action: str
-    coordinate: Optional[Tuple[int, int]] = None
-    coordinate2: Optional[Tuple[int, int]] = None
-    text: Optional[str] = None
-    time: Optional[float] = None
-    status: Optional[str] = None
-    description: Optional[str] = None
-    raw: Optional[str] = None
 
 
-def _get_client() -> OpenAI:
-    """Get OpenAI client for HuggingFace router."""
-    token = os.environ.get("HF_TOKEN")
-    if not token:
-        raise ValueError(
-            "HF_TOKEN not found in environment. "
-            "Please set HF_TOKEN in your .env file for V_action vision model. "
-            "Get a valid token from: https://huggingface.co/settings/tokens"
-        )
-    # Verify token is not a placeholder
-    if token.startswith("your_") or len(token) < 10:
-        raise ValueError(
-            f"Invalid HF_TOKEN: '{token}'. "
-            "Please update HF_TOKEN in your .env file with a valid token from https://huggingface.co/settings/tokens"
-        )
-    
-    # Debug: Show what token is being used (masked)
-    masked_token = token[:10] + "..." + token[-5:] if len(token) > 15 else "***"
-    print(f"[DEBUG] Using HF_TOKEN: {masked_token}")
-    
-    return OpenAI(base_url=HF_BASE_URL, api_key=token)
 
-
-def _capture_screenshot(region: Optional[Dict[str, int]] = None, max_dim: Optional[int] = None) -> Tuple[str, str, Tuple[int, int]]:
+def _capture_screenshot(region: Optional[Dict[str, int]] = None, max_dim: Optional[int] = None) -> Tuple[str, str, Tuple[int, int], Tuple[int, int]]:
     """
     Capture desktop screenshot.
     
     Returns:
-        Tuple of (base64_data_url, file_path, (width, height))
+        Tuple of (base64_data_url, file_path, (width, height), (original_width, original_height))
     """
+    step_start = log_step("Capture Screenshot")
     with mss() as sct:
         mon = region or sct.monitors[0]
         shot = sct.grab(mon)
         img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
+        
+        original_size = img.size
 
         # Optionally downscale to control payload size
         if max_dim:
@@ -103,7 +69,8 @@ def _capture_screenshot(region: Optional[Dict[str, int]] = None, max_dim: Option
         path = os.path.join(os.getcwd(), "desktop_screenshot.png")
         img.save(path)
 
-        return data_url, path, (img.width, img.height)
+        log_step("Capture Screenshot", step_start)
+        return data_url, path, (img.width, img.height), original_size
 
 
 
@@ -141,108 +108,9 @@ def _v_action(instruction: str, screenshot_data_url: str, screen_size: Tuple[int
         "Important: For Windows taskbar/Start button, coordinates are typically near bottom-left."
     )
     
-    try:
-        resp = _get_client().chat.completions.create(
-            model=V_ACTION_MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": f"Instruction: {instruction}\nScreen size: {screen_size[0]}x{screen_size[1]}"},
-                        {"type": "image_url", "image_url": {"url": screenshot_data_url}},
-                    ],
-                },
-            ],
-            temperature=0.1,
-            max_tokens=200,
-        )
-        raw = resp.choices[0].message.content
-        act = _parse_action_json(raw)
-        act.raw = raw
-        return act
-    except Exception as e:
-        error_msg = str(e)
-        # Better error messages for auth failures
-        if "401" in error_msg or "Invalid username" in error_msg or "Unauthorized" in error_msg:
-            error_msg = (
-                f"HuggingFace authentication failed. Error: {error_msg}\n"
-                f"Your HF_TOKEN in .env may be invalid or expired.\n"
-                f"Get a new token from: https://huggingface.co/settings/tokens\n"
-                f"Make sure the token has 'read' permissions."
-            )
-        return ActionResult(action="error", status=error_msg, raw=str(e))
-
-
-def _parse_action_json(content: str) -> ActionResult:
-    """Parse JSON response from V_action model."""
-    # Try to extract JSON from response
-    start = content.find("{")
-    end = content.rfind("}")
+    user_text = f"Instruction: {instruction}\nScreen size: {screen_size[0]}x{screen_size[1]}"
     
-    if start != -1 and end != -1:
-        try:
-            obj = json.loads(content[start:end + 1])
-            c1 = obj.get("coordinate")
-            c2 = obj.get("coordinate2")
-            return ActionResult(
-                action=obj.get("action", "unknown"),
-                coordinate=tuple(c1) if c1 else None,
-                coordinate2=tuple(c2) if c2 else None,
-                text=obj.get("text"),
-                time=obj.get("time"),
-                status=obj.get("status"),
-                description=obj.get("description"),
-            )
-        except json.JSONDecodeError:
-            pass
-    
-    # Fallback parsing for non-JSON format
-    try:
-        data = {}
-        parts = content.split(", ")
-        for part in parts:
-            if ": " in part:
-                key, val = part.split(": ", 1)
-                key = key.strip()
-                val = val.strip()
-                if val.startswith("[") and val.endswith("]"):
-                    val = json.loads(val)
-                elif val.isdigit():
-                    val = int(val)
-                elif val.replace(".", "", 1).isdigit():
-                    val = float(val)
-                elif val.startswith('"') and val.endswith('"'):
-                    val = val[1:-1]
-                data[key] = val
-        
-        c1 = data.get("coordinate")
-        c2 = data.get("coordinate2")
-        return ActionResult(
-            action=data.get("action", "unknown"),
-            coordinate=tuple(c1) if c1 else None,
-            coordinate2=tuple(c2) if c2 else None,
-            text=data.get("text"),
-            time=data.get("time"),
-            status=data.get("status"),
-            description=data.get("description"),
-        )
-    except Exception:
-        return ActionResult(action="error", status=f"Failed to parse: {content}")
-
-
-def _to_pixels(coord: Tuple[float, float], screen_size: Tuple[int, int]) -> Tuple[int, int]:
-    """Convert normalized coordinates (0-1000) to screen pixels."""
-    x, y = coord
-    # If values are in 1000-based grid
-    if x > 1 or y > 1:
-        px = int(x / 1000.0 * screen_size[0])
-        py = int(y / 1000.0 * screen_size[1])
-    else:
-        # If normalized 0-1
-        px = int(x * screen_size[0])
-        py = int(y * screen_size[1])
-    return max(0, px), max(0, py)
+    return query_vl_model(system_prompt, user_text, screenshot_data_url)
 
 
 def _show_highlight(x: int, y: int, duration: float = HIGHLIGHT_DURATION) -> None:
@@ -276,7 +144,7 @@ def _execute_action(act: ActionResult, screen_size: Tuple[int, int]) -> str:
     """Execute the action on the desktop."""
     try:
         if act.action == "click" and act.coordinate:
-            x, y = _to_pixels(act.coordinate, screen_size)
+            x, y = to_pixels(act.coordinate, screen_size)
             _show_highlight(x, y)
             pyautogui.moveTo(x, y)
             time.sleep(0.3)
@@ -284,7 +152,7 @@ def _execute_action(act: ActionResult, screen_size: Tuple[int, int]) -> str:
             return f"Clicked at ({x}, {y})"
         
         elif act.action == "double_click" and act.coordinate:
-            x, y = _to_pixels(act.coordinate, screen_size)
+            x, y = to_pixels(act.coordinate, screen_size)
             _show_highlight(x, y)
             pyautogui.moveTo(x, y)
             time.sleep(0.3)
@@ -292,7 +160,7 @@ def _execute_action(act: ActionResult, screen_size: Tuple[int, int]) -> str:
             return f"Double-clicked at ({x}, {y})"
         
         elif act.action == "right_click" and act.coordinate:
-            x, y = _to_pixels(act.coordinate, screen_size)
+            x, y = to_pixels(act.coordinate, screen_size)
             _show_highlight(x, y)
             pyautogui.moveTo(x, y)
             time.sleep(0.3)
@@ -301,7 +169,7 @@ def _execute_action(act: ActionResult, screen_size: Tuple[int, int]) -> str:
         
         elif act.action == "type":
             if act.coordinate:
-                x, y = _to_pixels(act.coordinate, screen_size)
+                x, y = to_pixels(act.coordinate, screen_size)
                 pyautogui.click(x, y)
                 time.sleep(0.2)
             if act.text:
@@ -310,7 +178,7 @@ def _execute_action(act: ActionResult, screen_size: Tuple[int, int]) -> str:
             return "Type action but no text provided"
         
         elif act.action == "scroll" and act.coordinate:
-            x, y = _to_pixels(act.coordinate, screen_size)
+            x, y = to_pixels(act.coordinate, screen_size)
             pyautogui.moveTo(x, y)
             direction = act.text or "down"
             clicks = -3 if direction.lower() == "down" else 3
@@ -318,8 +186,8 @@ def _execute_action(act: ActionResult, screen_size: Tuple[int, int]) -> str:
             return f"Scrolled {direction} at ({x}, {y})"
         
         elif act.action == "drag" and act.coordinate and act.coordinate2:
-            x1, y1 = _to_pixels(act.coordinate, screen_size)
-            x2, y2 = _to_pixels(act.coordinate2, screen_size)
+            x1, y1 = to_pixels(act.coordinate, screen_size)
+            x2, y2 = to_pixels(act.coordinate2, screen_size)
             _show_highlight(x1, y1)
             pyautogui.moveTo(x1, y1)
             pyautogui.drag(x2 - x1, y2 - y1, duration=0.5)
@@ -356,7 +224,7 @@ def computer_screenshot() -> str:
     """
     try:
         # Downscale to 512x512 specifically for LLM context control
-        data_url, path, size = _capture_screenshot(max_dim=512)
+        data_url, path, size, _ = _capture_screenshot(max_dim=512)
         payload = {
             "type": "screenshot",
             "path": path,
@@ -389,6 +257,7 @@ def computer_control(instruction: str) -> str:
     Returns:
         Result of the action execution
     """
+    total_start = log_step(f"Computer Control: {instruction[:50]}...")
     try:
         # Try to parse JSON instruction
         try:
@@ -406,16 +275,20 @@ def computer_control(instruction: str) -> str:
             pass  # Use raw instruction if not JSON
 
         # Capture current screen state
-        data_url, path, screen_size = _capture_screenshot()
+        # Resize to 512x512 to prevent timeouts with large payloads
+        data_url, path, screen_size, original_size = _capture_screenshot(max_dim=512)
         
         # Get action from V_action model
         action_result = _v_action(instruction, data_url, screen_size)
         
         if action_result.action == "error":
+            log_step("Computer Control (Error)", total_start)
             return f"V_action error: {action_result.status}"
         
         # Execute the action
-        result = _execute_action(action_result, screen_size)
+        exec_start = log_step(f"Executing Action: {action_result.action}")
+        result = _execute_action(action_result, original_size)
+        log_step("Action Execution", exec_start)
         
         # Build response
         response = f"Instruction: {instruction}\n"
@@ -423,33 +296,39 @@ def computer_control(instruction: str) -> str:
         if action_result.description:
             response += f"Description: {action_result.description}\n"
         if action_result.coordinate:
-            px, py = _to_pixels(action_result.coordinate, screen_size)
+            px, py = to_pixels(action_result.coordinate, original_size)
             response += f"Coordinate: ({px}, {py})\n"
         response += f"Result: {result}"
         
+        log_step("Computer Control", total_start)
         return response
     
     except Exception as e:
+        log_step("Computer Control (Exception)", total_start)
         return f"Computer control error: {e}"
 
 
 @tool
-def computer_type_text(text: str, press_enter: bool = False) -> str:
+def computer_type_text(text: str, press_enter: str = "False") -> str:
     """
     Type text at the current cursor position.
     
     Args:
         text: The text to type
-        press_enter: Whether to press Enter after typing
+        press_enter: Whether to press Enter after typing (true/false)
     
     Returns:
         Confirmation of the typed text
     """
     try:
         pyautogui.typewrite(text, interval=0.03)
-        if press_enter:
+        
+        # Handle string boolean from LLM
+        should_enter = str(press_enter).lower() == "true"
+        
+        if should_enter:
             pyautogui.press('enter')
-        return f"Typed: '{text}'" + (" and pressed Enter" if press_enter else "")
+        return f"Typed: '{text}'" + (" and pressed Enter" if should_enter else "")
     except Exception as e:
         return f"Error typing text: {e}"
 

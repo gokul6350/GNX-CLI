@@ -11,61 +11,22 @@ Workflow:
 
 import base64
 import json
+import io
 import os
 import subprocess
 import time
-from dataclasses import dataclass
 from typing import Optional, Tuple, List
 
-from openai import OpenAI
 from PIL import Image
 from langchain_core.tools import tool
 from dotenv import load_dotenv
 
+from src.gnx_engine.vl_provider import query_vl_model, to_pixels, ActionResult, log_step
+
 # Ensure .env is loaded and OVERRIDES any existing env vars
 load_dotenv(override=True)
 
-# Configuration
-HF_BASE_URL = "https://router.huggingface.co/v1"
-V_ACTION_MODEL = "Qwen/Qwen3-VL-8B-Instruct:fastest"  # Vision-Language model for actions
-
 ADB_EXE = "adb"  # Assumes ADB is in PATH
-
-
-@dataclass
-class ActionResult:
-    """Result from V_action model"""
-    action: str
-    coordinate: Optional[Tuple[int, int]] = None
-    coordinate2: Optional[Tuple[int, int]] = None
-    text: Optional[str] = None
-    time: Optional[float] = None
-    status: Optional[str] = None
-    description: Optional[str] = None
-    raw: Optional[str] = None
-
-
-def _get_client() -> OpenAI:
-    """Get OpenAI client for HuggingFace router."""
-    token = os.environ.get("HF_TOKEN")
-    if not token:
-        raise ValueError(
-            "HF_TOKEN not found in environment. "
-            "Please set HF_TOKEN in your .env file for V_action vision model. "
-            "Get a valid token from: https://huggingface.co/settings/tokens"
-        )
-    # Verify token is not a placeholder
-    if token.startswith("your_") or len(token) < 10:
-        raise ValueError(
-            f"Invalid HF_TOKEN: '{token}'. "
-            "Please update HF_TOKEN in your .env file with a valid token from https://huggingface.co/settings/tokens"
-        )
-    
-    # Debug: Show what token is being used (masked)
-    masked_token = token[:10] + "..." + token[-5:] if len(token) > 15 else "***"
-    print(f"[DEBUG] Using HF_TOKEN: {masked_token}")
-    
-    return OpenAI(base_url=HF_BASE_URL, api_key=token)
 
 
 def _adb_command(cmd: str, device_id: Optional[str] = None) -> str:
@@ -86,13 +47,14 @@ def _adb_command(cmd: str, device_id: Optional[str] = None) -> str:
         return f"ADB Error: {e.stderr}"
 
 
-def _capture_mobile_screenshot(device_id: Optional[str] = None) -> Tuple[str, str, Tuple[int, int]]:
+def _capture_mobile_screenshot(device_id: Optional[str] = None, max_dim: Optional[int] = None) -> Tuple[str, str, Tuple[int, int], Tuple[int, int]]:
     """
     Capture screenshot from mobile device via ADB.
     
     Returns:
-        Tuple of (base64_data_url, file_path, (width, height))
+        Tuple of (base64_data_url, file_path, (width, height), (original_width, original_height))
     """
+    step_start = log_step("Capture Mobile Screenshot")
     prefix = f"-s {device_id} " if device_id else ""
     remote_path = "/sdcard/gnx_screenshot.png"
     local_path = os.path.join(os.getcwd(), "mobile_screenshot.png")
@@ -129,17 +91,24 @@ def _capture_mobile_screenshot(device_id: Optional[str] = None) -> Tuple[str, st
     
     # Get image dimensions and create base64
     img = Image.open(local_path)
-    w, h = img.size
+    original_size = img.size
     
-    with open(local_path, "rb") as f:
-        b64 = base64.b64encode(f.read()).decode("ascii")
+    # Resize if max_dim is provided
+    if max_dim:
+        img.thumbnail((max_dim, max_dim), Image.LANCZOS)
+        
+    # Save to buffer for base64
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    b64 = base64.b64encode(buf.getvalue()).decode("ascii")
     
     data_url = f"data:image/png;base64,{b64}"
     
-    return data_url, local_path, (w, h)
+    log_step("Capture Mobile Screenshot", step_start)
+    return data_url, local_path, (img.width, img.height), original_size
 
 
-def _v_action_mobile(instruction: str, screenshot_data_url: str, screen_size: Tuple[int, int]) -> ActionResult:
+def _v_action_mobile(instruction: str, screenshot_data_url: str, screen_size: Tuple[int, int], history: List[str] = None) -> ActionResult:
     """
     Call V_action vision model for mobile actions.
     
@@ -147,13 +116,15 @@ def _v_action_mobile(instruction: str, screenshot_data_url: str, screen_size: Tu
         instruction: Natural language instruction (from GNX engine)
         screenshot_data_url: Base64 encoded screenshot
         screen_size: Screen dimensions (width, height)
+        history: List of previous actions and results
     
     Returns:
         ActionResult with action type and coordinates
     """
     system_prompt = (
         "You are V_action, a vision-based action executor for mobile phone automation. "
-        "Given an instruction and phone screenshot, determine the exact action to perform.\n\n"
+        "You are working as an agent to complete a multi-step goal.\n"
+        "Given a goal, screen history, and current phone screenshot, determine the exact NEXT action to perform.\n\n"
         "Return ONLY valid JSON with these fields:\n"
         "- action: one of 'tap', 'double_tap', 'long_press', 'type', 'swipe', 'swipe_up', 'swipe_down', 'back', 'home', 'wait', 'terminate'\n"
         "- coordinate: [x, y] in 1000x1000 normalized grid (0-1000)\n"
@@ -163,8 +134,9 @@ def _v_action_mobile(instruction: str, screenshot_data_url: str, screen_size: Tu
         "- time: milliseconds to wait or long press duration\n"
         "- status: completion message (only for terminate action)\n\n"
         "CRITICAL RULES:\n"
-        "1. If the target element is NOT visible, do NOT guess coordinates.\n"
-        "2. If the element is definitely not found, return: {\"action\": \"terminate\", \"status\": \"Element not found\"}\n\n"
+        "1. If the target element is NOT visible, do NOT guess coordinates. Instead, output a 'swipe_up' or 'swipe_down' action to look for it.\n"
+        "2. If you have searched and the element is definitely not found, return: {\"action\": \"terminate\", \"status\": \"Element not found\"}\n"
+        "3. If the goal is achieved, return: {\"action\": \"terminate\", \"status\": \"Goal completed\"}\n\n"
         "Examples:\n"
         '{\"action\": \"tap\", \"coordinate\": [500, 500], \"description\": \"Settings icon\"}\n'
         '{\"action\": \"type\", \"coordinate\": [500, 300], \"text\": \"hello\", \"description\": \"Search bar\"}\n'
@@ -176,105 +148,15 @@ def _v_action_mobile(instruction: str, screenshot_data_url: str, screen_size: Tu
         "Important: Mobile coordinates start from top-left. Status bar is at the top."
     )
     
-    try:
-        resp = _get_client().chat.completions.create(
-            model=V_ACTION_MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": f"Instruction: {instruction}\nScreen size: {screen_size[0]}x{screen_size[1]}"},
-                        {"type": "image_url", "image_url": {"url": screenshot_data_url}},
-                    ],
-                },
-            ],
-            temperature=0.1,
-            max_tokens=200,
-        )
-        raw = resp.choices[0].message.content
-        act = _parse_action_json(raw)
-        act.raw = raw
-        return act
-    except Exception as e:
-        error_msg = str(e)
-        # Better error messages for auth failures
-        if "401" in error_msg or "Invalid username" in error_msg or "Unauthorized" in error_msg:
-            error_msg = (
-                f"HuggingFace authentication failed. Error: {error_msg}\n"
-                f"Your HF_TOKEN in .env may be invalid or expired.\n"
-                f"Get a new token from: https://huggingface.co/settings/tokens\n"
-                f"Make sure the token has 'read' permissions."
-            )
-        return ActionResult(action="error", status=error_msg, raw=str(e))
+    history_text = "\n".join(history) if history else "None"
+    user_text = (
+        f"Goal: {instruction}\n"
+        f"Screen size: {screen_size[0]}x{screen_size[1]}\n"
+        f"History of actions:\n{history_text}\n\n"
+        "What is the next step?"
+    )
 
-
-def _parse_action_json(content: str) -> ActionResult:
-    """Parse JSON response from V_action model."""
-    start = content.find("{")
-    end = content.rfind("}")
-    
-    if start != -1 and end != -1:
-        try:
-            obj = json.loads(content[start:end + 1])
-            c1 = obj.get("coordinate")
-            c2 = obj.get("coordinate2")
-            return ActionResult(
-                action=obj.get("action", "unknown"),
-                coordinate=tuple(c1) if c1 else None,
-                coordinate2=tuple(c2) if c2 else None,
-                text=obj.get("text"),
-                time=obj.get("time"),
-                status=obj.get("status"),
-                description=obj.get("description"),
-            )
-        except json.JSONDecodeError:
-            pass
-    
-    # Fallback parsing
-    try:
-        data = {}
-        parts = content.split(", ")
-        for part in parts:
-            if ": " in part:
-                key, val = part.split(": ", 1)
-                key = key.strip()
-                val = val.strip()
-                if val.startswith("[") and val.endswith("]"):
-                    val = json.loads(val)
-                elif val.isdigit():
-                    val = int(val)
-                elif val.replace(".", "", 1).isdigit():
-                    val = float(val)
-                elif val.startswith('"') and val.endswith('"'):
-                    val = val[1:-1]
-                data[key] = val
-        
-        c1 = data.get("coordinate")
-        c2 = data.get("coordinate2")
-        return ActionResult(
-            action=data.get("action", "unknown"),
-            coordinate=tuple(c1) if c1 else None,
-            coordinate2=tuple(c2) if c2 else None,
-            text=data.get("text"),
-            time=data.get("time"),
-            status=data.get("status"),
-            description=data.get("description"),
-        )
-    except Exception:
-        return ActionResult(action="error", status=f"Failed to parse: {content}")
-
-
-def _to_pixels(coord: Tuple[float, float], screen_size: Tuple[int, int]) -> Tuple[int, int]:
-    """Convert normalized coordinates (0-1000) to screen pixels."""
-    x, y = coord
-    if x > 1 or y > 1:
-        px = int(x / 1000.0 * screen_size[0])
-        py = int(y / 1000.0 * screen_size[1])
-    else:
-        px = int(x * screen_size[0])
-        py = int(y * screen_size[1])
-    return max(0, px), max(0, py)
+    return query_vl_model(system_prompt, user_text, screenshot_data_url)
 
 
 def _execute_mobile_action(act: ActionResult, screen_size: Tuple[int, int], device_id: Optional[str] = None) -> str:
@@ -283,26 +165,26 @@ def _execute_mobile_action(act: ActionResult, screen_size: Tuple[int, int], devi
     
     try:
         if act.action == "tap" and act.coordinate:
-            x, y = _to_pixels(act.coordinate, screen_size)
+            x, y = to_pixels(act.coordinate, screen_size)
             subprocess.run(f"{ADB_EXE} {prefix}shell input tap {x} {y}", shell=True, check=True)
             return f"Tapped at ({x}, {y})"
         
         elif act.action == "double_tap" and act.coordinate:
-            x, y = _to_pixels(act.coordinate, screen_size)
+            x, y = to_pixels(act.coordinate, screen_size)
             subprocess.run(f"{ADB_EXE} {prefix}shell input tap {x} {y}", shell=True, check=True)
             time.sleep(0.1)
             subprocess.run(f"{ADB_EXE} {prefix}shell input tap {x} {y}", shell=True, check=True)
             return f"Double-tapped at ({x}, {y})"
         
         elif act.action == "long_press" and act.coordinate:
-            x, y = _to_pixels(act.coordinate, screen_size)
+            x, y = to_pixels(act.coordinate, screen_size)
             duration = act.time or 1000  # Default 1 second
             subprocess.run(f"{ADB_EXE} {prefix}shell input swipe {x} {y} {x} {y} {int(duration)}", shell=True, check=True)
             return f"Long-pressed at ({x}, {y}) for {duration}ms"
         
         elif act.action == "type":
             if act.coordinate:
-                x, y = _to_pixels(act.coordinate, screen_size)
+                x, y = to_pixels(act.coordinate, screen_size)
                 subprocess.run(f"{ADB_EXE} {prefix}shell input tap {x} {y}", shell=True, check=True)
                 time.sleep(0.3)
             if act.text:
@@ -313,8 +195,8 @@ def _execute_mobile_action(act: ActionResult, screen_size: Tuple[int, int], devi
             return "Type action but no text provided"
         
         elif act.action == "swipe" and act.coordinate and act.coordinate2:
-            x1, y1 = _to_pixels(act.coordinate, screen_size)
-            x2, y2 = _to_pixels(act.coordinate2, screen_size)
+            x1, y1 = to_pixels(act.coordinate, screen_size)
+            x2, y2 = to_pixels(act.coordinate2, screen_size)
             duration = act.time or 300
             subprocess.run(f"{ADB_EXE} {prefix}shell input swipe {x1} {y1} {x2} {y2} {int(duration)}", shell=True, check=True)
             return f"Swiped from ({x1}, {y1}) to ({x2}, {y2})"
@@ -443,7 +325,8 @@ def mobile_screenshot() -> str:
     global _current_device_id
     
     try:
-        data_url, path, size = _capture_mobile_screenshot(_current_device_id)
+        # Downscale to 512x512 for LLM context
+        data_url, path, size, _ = _capture_mobile_screenshot(_current_device_id, max_dim=512)
         
         # Return JSON payload compatible with NativeToolAdapter
         payload = {
@@ -478,6 +361,7 @@ def mobile_control(instruction: str) -> str:
         Result of the action execution
     """
     global _current_device_id
+    total_start = log_step(f"Mobile Control: {instruction[:50]}...")
     
     try:
         # Try to parse JSON instruction
@@ -495,31 +379,47 @@ def mobile_control(instruction: str) -> str:
         except json.JSONDecodeError:
             pass  # Use raw instruction if not JSON
 
-        # Capture current screen state
-        data_url, path, screen_size = _capture_mobile_screenshot(_current_device_id)
+        history = []
+        max_steps = 15
         
-        # Get action from V_action model
-        action_result = _v_action_mobile(instruction, data_url, screen_size)
-        
-        if action_result.action == "error":
-            return f"V_action error: {action_result.status}"
-        
-        # Execute the action
-        result = _execute_mobile_action(action_result, screen_size, _current_device_id)
-        
-        # Build response
-        response = f"Instruction: {instruction}\n"
-        response += f"Action: {action_result.action}\n"
-        if action_result.description:
-            response += f"Description: {action_result.description}\n"
-        if action_result.coordinate:
-            px, py = _to_pixels(action_result.coordinate, screen_size)
-            response += f"Coordinate: ({px}, {py})\n"
-        response += f"Result: {result}"
-        
-        return response
+        for step in range(max_steps):
+            step_start = log_step(f"Step {step+1}")
+            
+            # Capture current screen state
+            # Resize to 512x512 to prevent timeouts with large payloads
+            data_url, path, screen_size, original_size = _capture_mobile_screenshot(_current_device_id, max_dim=512)
+            
+            # Get action from V_action model
+            action_result = _v_action_mobile(instruction, data_url, screen_size, history)
+            
+            if action_result.action == "error":
+                log_step("Mobile Control (Error)", total_start)
+                return f"V_action error: {action_result.status}"
+            
+            # Execute the action
+            exec_start = log_step(f"Executing Action: {action_result.action}")
+            result = _execute_mobile_action(action_result, original_size, _current_device_id)
+            log_step("Action Execution", exec_start)
+            
+            # Record history
+            step_desc = f"Step {step+1}: Action={action_result.action}, Desc={action_result.description}, Result={result}"
+            history.append(step_desc)
+            
+            log_step(f"Step {step+1}", step_start)
+            
+            # Check termination
+            if action_result.action == "terminate":
+                log_step("Mobile Control", total_start)
+                return f"Finished: {action_result.status}\nHistory:\n" + "\n".join(history)
+            
+            # Wait a bit for UI to settle
+            time.sleep(1.0)
+            
+        log_step("Mobile Control (Max Steps)", total_start)
+        return f"Max steps ({max_steps}) reached. History:\n" + "\n".join(history)
     
     except Exception as e:
+        log_step("Mobile Control (Exception)", total_start)
         return f"Mobile control error: {e}"
 
 
@@ -584,7 +484,7 @@ def mobile_swipe(direction: str = "up") -> str:
     
     try:
         # Get screen size for swipe coordinates
-        data_url, path, size = _capture_mobile_screenshot(_current_device_id)
+        data_url, path, size, _ = _capture_mobile_screenshot(_current_device_id, max_dim=512)
         w, h = size
         cx, cy = w // 2, h // 2
         
