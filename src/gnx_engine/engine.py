@@ -12,11 +12,14 @@ from src.tools.search import glob, grep
 from src.tools.system import SYSTEM_TOOLS
 from src.tools.todos import write_todos, read_todos, mark_complete
 from src.tools.web_search import web_search, web_search_detailed, fetch_url
-from src.tools.computer_use import COMPUTER_USE_TOOLS
-from src.tools.mobile_use import MOBILE_USE_TOOLS
 from src.tools.ui_automation import UI_AUTOMATION_TOOLS
 from src.utils.token_counter import count_messages_tokens
 from src.utils.logger_client import history_logger
+
+# New modular tool imports
+from src.tools.desktop import DESKTOP_TOOLS
+from src.tools.mobile import MOBILE_TOOLS
+from src.tools.handoff import HANDOFF_TOOLS
 
 # Load environment variables from .env file
 load_dotenv()
@@ -31,7 +34,7 @@ class GNXEngine:
     
     def __init__(self, provider=None, model_name=None, api_key=None, load_mcp=True, mcp_config_path=None):
         # Determine provider from args, env, or default to groq
-        self.provider = provider or os.getenv("GNX_DEFAULT_PROVIDER", "groq").lower()
+        self.provider = provider or os.getenv("GNX_DEFAULT_PROVIDER", "glm").lower()
         
         if self.provider not in PROVIDERS:
             raise ValueError(f"Unknown provider: {self.provider}. Supported: {list(PROVIDERS.keys())}")
@@ -53,7 +56,7 @@ class GNXEngine:
         if not os.getenv(provider_config["env_key"]):
             logger.warning(f"No API key found for {self.provider}. Set {provider_config['env_key']} in .env or environment.")
         
-        # All tools including computer_use and mobile_use by default
+        # All tools including desktop and mobile by default
         self.tools = [
             ls, read_file, write_file, edit_file, 
             glob, grep,
@@ -64,13 +67,17 @@ class GNXEngine:
         # Add system utility tools (wait, capture_screen, etc.)
         self.tools.extend(SYSTEM_TOOLS)
         
-        # Add computer use tools (desktop automation)
-        self.tools.extend(COMPUTER_USE_TOOLS)
+        # Add atomic desktop tools (screenshot, click, type, etc.)
+        self.tools.extend(DESKTOP_TOOLS)
+        
         # Add UI automation helpers that work with UIA trees
         self.tools.extend(UI_AUTOMATION_TOOLS)
         
-        # Add mobile use tools (phone automation via ADB)
-        self.tools.extend(MOBILE_USE_TOOLS)
+        # Add atomic mobile tools (screenshot, tap, swipe, etc.)
+        self.tools.extend(MOBILE_TOOLS)
+        
+        # Add handoff tools (activate_vision_agent for auto LLM switch)
+        self.tools.extend(HANDOFF_TOOLS)
         
         # MCP support
         self.mcp_manager = None

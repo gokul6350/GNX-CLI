@@ -180,7 +180,8 @@ GNX CLI uses environment variables for configuration. You can set these in a `.e
 | `GROQ_API_KEY` | API key for Groq models (Llama 4 Scout) | Yes |
 | `GOOGLE_API_KEY` | API key for Google Gemini models | No (fallback) |
 | `HF_TOKEN` | HuggingFace token for V_action vision model | Optional |
-| `GNX_DEFAULT_PROVIDER` | Default LLM provider (`groq` or `gemini`) | No (Default: `groq`) |
+| `ZHIPUAI_API_KEY` | API key for ZhipuAI's GLM-4.5 series (text-only, see [GLMinfo.md](GLMinfo.md)) | Yes |
+| `GNX_DEFAULT_PROVIDER` | Default LLM provider (`glm`, `groq`, or `gemini`; GLM is text-only—see [GLMinfo.md](GLMinfo.md)) | No (Default: `glm`) |
 
 ### Setting up .env
 
@@ -321,12 +322,16 @@ GOOGLE_API_KEY=your_google_api_key_here
 # HuggingFace Token (for V_action vision model in computer_use)
 HF_TOKEN=your_huggingface_token_here
 
-# Default provider: "groq" (recommended) or "gemini"
-GNX_DEFAULT_PROVIDER=groq
+# ZhipuAI API Key (GLM-4.5 text-only series, see GLMinfo.md)
+ZHIPUAI_API_KEY=your_zhipuai_api_key_here
+
+# Default provider: "glm" (GLM-4 text-only, see GLMinfo.md) or alternatives "groq"/"gemini"
+GNX_DEFAULT_PROVIDER=glm
 
 # Default model names (optional - will use defaults if not set)
 # GROQ_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
 # GEMINI_MODEL=gemini-1.5-flash
+# GLM_MODEL=glm-4.5
 ```
 
 

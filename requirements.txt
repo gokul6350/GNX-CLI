@@ -2,6 +2,7 @@ langchain
 langchain-google-genai
 langchain-groq
 langchain-community
+PyJWT
 deepagents
 rich
 pillow

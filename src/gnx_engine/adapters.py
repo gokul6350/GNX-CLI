@@ -8,6 +8,13 @@ from .prompts import build_system_prompt
 from src.utils.logger_client import history_logger
 from src.utils.debug_logger import debug
 
+# Check if main AI supports vision
+try:
+    import config
+    VISION_FOR_MAIN_AI = getattr(config, 'VISION_FOR_MAIN_AI', True)
+except ImportError:
+    VISION_FOR_MAIN_AI = True
+
 # Configure logging to file
 logging.basicConfig(
     filename='app0.log',
@@ -300,7 +307,8 @@ class NativeToolAdapter:
                 })
                 
                 # If screenshot with image, add as multimodal message for model to see
-                if screenshot_payload and screenshot_payload.get("data_url"):
+                # Only if VISION_FOR_MAIN_AI is enabled (GLM doesn't support images)
+                if screenshot_payload and screenshot_payload.get("data_url") and VISION_FOR_MAIN_AI:
                     width = screenshot_payload.get("width", "?")
                     height = screenshot_payload.get("height", "?")
                     path = screenshot_payload.get("path", "screenshot")
@@ -323,6 +331,14 @@ class NativeToolAdapter:
                         "data_url_len": f"{len(screenshot_payload.get('data_url', '')) / 1024:.1f} KB"
                     })
                     logger.debug(f"Added screenshot image to conversation")
+                elif screenshot_payload and not VISION_FOR_MAIN_AI:
+                    # Vision disabled for main AI - add text hint instead
+                    width = screenshot_payload.get("width", "?")
+                    height = screenshot_payload.get("height", "?")
+                    path = screenshot_payload.get("path", "screenshot")
+                    hint = f"Screenshot captured ({width}x{height}) saved to {path}. Use activate_vision_agent tool to analyze and interact with visual content."
+                    conversation.append(HumanMessage(content=hint))
+                    debug.info(f"Vision disabled for main AI - added text hint instead of image")
             
             logger.debug(f"Processed {len(tool_calls)} tool calls, continuing loop")
         
