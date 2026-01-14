@@ -53,7 +53,7 @@ class VisionAgent:
                 user_text,
                 screenshot_data_url,
                 temperature=0.1,
-                max_tokens=300
+                max_tokens=1024
             )
             return parse_action_json(raw_response)
         except Exception as e:

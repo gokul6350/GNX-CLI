@@ -104,8 +104,8 @@ def mobile_screenshot() -> str:
     Use this to see the current state of the phone before giving instructions.
     """
     try:
-        # Downscale to 512x512 for LLM context
-        data_url, path, size, _ = capture_mobile_screenshot(max_dim=512)
+        # Downscale to 1280x1280 for better visual fidelity
+        data_url, path, size, _ = capture_mobile_screenshot(max_dim=1280)
         
         # Return JSON payload compatible with NativeToolAdapter
         payload = {

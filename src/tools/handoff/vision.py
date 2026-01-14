@@ -245,11 +245,11 @@ def activate_vision_agent(task: str, mode: str = "desktop") -> str:
     
     if mode == "mobile":
         from src.tools.mobile.screenshot import capture_mobile_screenshot
-        capture_fn = lambda: capture_mobile_screenshot(max_dim=512)
+        capture_fn = lambda: capture_mobile_screenshot(max_dim=1280)
         execute_fn = _create_mobile_executor()
     else:
         from src.tools.desktop.screenshot import capture_desktop_screenshot
-        capture_fn = lambda: capture_desktop_screenshot(max_dim=512)
+        capture_fn = lambda: capture_desktop_screenshot(max_dim=1920)
         execute_fn = _create_desktop_executor()
     
     return agent.run(task, capture_fn, execute_fn)

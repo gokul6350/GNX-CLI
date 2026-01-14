@@ -74,6 +74,7 @@ def parse_action_json(content: str) -> ActionResult:
         
         return ActionResult(
             action=data.get("action", "unknown"),
+            reasoning=data.get("reasoning"),
             coordinate=c1,
             coordinate2=c2,
             text=data.get("text"),

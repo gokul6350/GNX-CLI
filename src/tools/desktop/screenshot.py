@@ -59,8 +59,8 @@ def computer_screenshot() -> str:
     Use this to see the current state of the desktop before giving instructions.
     """
     try:
-        # Downscale to 512x512 specifically for LLM context control
-        data_url, path, size, _ = capture_desktop_screenshot(max_dim=512)
+        # Downscale to 1920x1920 to retain desktop UI detail
+        data_url, path, size, _ = capture_desktop_screenshot(max_dim=1920)
         payload = {
             "type": "screenshot",
             "path": path,

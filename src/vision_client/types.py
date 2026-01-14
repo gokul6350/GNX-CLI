@@ -10,6 +10,7 @@ from typing import Optional, Tuple
 class ActionResult:
     """Result from Vision Model action parsing."""
     action: str
+    reasoning: Optional[str] = None
     coordinate: Optional[Tuple[int, int]] = None
     coordinate2: Optional[Tuple[int, int]] = None
     text: Optional[str] = None

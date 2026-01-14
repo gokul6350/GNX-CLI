@@ -55,7 +55,11 @@ mobile_last.png
 test_file.txt
 test_output.txt
 
-# OS
+
+/last_rough_request.json
+/last_rough_request.json
+/last_vl_request.json
+
 .DS_Store
 Thumbs.db
 
