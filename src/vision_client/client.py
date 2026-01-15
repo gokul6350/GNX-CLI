@@ -4,6 +4,7 @@ import json
 import logging
 import time
 import datetime
+import os
 from contextlib import nullcontext
 from typing import Optional
 
@@ -96,67 +97,92 @@ class VisionModelClient:
             else nullcontext()
         )
 
+        # Build request payload
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": user_text},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": image_data_url},
+                    },
+                ],
+            },
+        ]
+
         try:
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": user_text},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": image_data_url},
-                        },
-                    ],
-                },
-            ]
+            debug_payload = {
+                "model": self.model,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            }
+            with open("last_vl_request.json", "w", encoding="utf-8") as f:
+                json.dump(debug_payload, f, indent=2)
+        except Exception:
+            pass
 
-            try:
-                debug_payload = {
-                    "model": self.model,
-                    "messages": messages,
-                    "temperature": temperature,
-                    "max_tokens": max_tokens,
-                }
-                with open("last_vl_request.json", "w", encoding="utf-8") as f:
-                    json.dump(debug_payload, f, indent=2)
-            except Exception:
-                pass
+        # Retry configuration: can be overridden via env vars
+        max_retries = int(os.environ.get("VL_MAX_RETRIES", "3"))
+        retry_delay = int(os.environ.get("VL_RETRY_DELAY", "10"))
 
-            with status_ctx:
-                step_start = log_step("Query VL Model")
-                send_step = log_step(
-                    f"Sending request to {self.config.get('base_url')} (Model: {self.model})"
-                )
-                resp = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                )
+        # Overall request loop with retry on rate-limit (429)
+        base_url = self.config.get("base_url")
+        step_start = None
+        with status_ctx:
+            step_start = log_step("Query VL Model")
+            for attempt in range(0, max_retries + 1):
+                send_step = log_step(f"Sending request to {base_url} (Model: {self.model})")
+                try:
+                    resp = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                    )
 
-            log_step(
-                f"Sending request to {self.config.get('base_url')} (Model: {self.model})",
-                send_step,
-            )
-            log_step("Query VL Model", step_start)
+                    # Successful request: log and return content
+                    log_step(f"Sending request to {base_url} (Model: {self.model})", send_step)
+                    log_step("Query VL Model", step_start)
+                    return resp.choices[0].message.content
 
-            return resp.choices[0].message.content
+                except Exception as e:
+                    error_msg = str(e)
+                    print(f"Error in query_vl_model: {error_msg}")
 
-        except Exception as e:
-            error_msg = str(e)
-            print(f"Error in query_vl_model: {error_msg}")
+                    # Helpful hint for auth errors
+                    if "401" in error_msg or "Unauthorized" in error_msg:
+                        if self.config["provider"] == "huggingface":
+                            error_msg += "\nHint: Check your HF_TOKEN in .env file."
 
-            if "401" in error_msg or "Unauthorized" in error_msg:
-                if self.config["provider"] == "huggingface":
-                    error_msg += "\nHint: Check your HF_TOKEN in .env file."
+                    # Log this send attempt as failed
+                    log_step(
+                        f"Sending request to {base_url} (Model: {self.model}) (Failed)",
+                        send_step,
+                    )
 
-            log_step(
-                f"Sending request to {self.config.get('base_url')} (Model: {self.model}) (Failed)",
-                send_step,
-            )
-            log_step("Query VL Model (Failed)", step_start)
-            raise
+                    # Detect rate limit errors and retry after a short delay
+                    is_rate_limit = (
+                        "429" in error_msg
+                        or "RATE_LIMIT" in error_msg.upper()
+                        or "rate limit" in error_msg.lower()
+                        or "RESOURCE_EXHAUSTED" in error_msg
+                    )
+
+                    if is_rate_limit and attempt < max_retries:
+                        wait = retry_delay
+                        if console:
+                            console.print(f"[yellow]Rate limit hit; retrying in {wait}s (attempt {attempt+1}/{max_retries})[/yellow]")
+                        else:
+                            print(f"Rate limit hit; retrying in {wait}s (attempt {attempt+1}/{max_retries})")
+                        time.sleep(wait)
+                        continue
+
+                    # No more retries or non-rate-limit error: mark failed and raise
+                    log_step("Query VL Model (Failed)", step_start)
+                    raise
 
 
 # Global client instance (lazy initialization)

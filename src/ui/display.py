@@ -32,7 +32,7 @@ def show_banner():
         Align.center(styled_text),
         border_style="bold blue",
         title="[bold white]GNX ENGINE[/bold white]",
-        subtitle="[dim]Powered by Llama 4 Scout[/dim]"
+        subtitle="[dim]Powered by GLM 4.5[/dim]"
     )
     console.print(panel)
 
