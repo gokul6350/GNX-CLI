@@ -1,30 +1,32 @@
 # GNX CLI - AI Agent with Desktop & Mobile Control
 
-A powerful Python-based AI agent that combines LLM reasoning with real-world automation. Uses **Llama 4 Scout** (meta-llama/llama-4-scout-17b-16e-instruct) with native tool calling and multimodal vision capabilities for intelligent desktop and mobile device control.
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Python](https://img.shields.io/badge/python-3.10+-blue.svg)
+![Status](https://img.shields.io/badge/status-active-success.svg)
+
+**GNX CLI** is a next-generation AI agent capable of perceiving and manipulating real-world interfaces. Built on a modular architecture, it combines **Native Tool Calling** (Llama 4 Scout/Groq) for rapid logic with a specialized **Vision Agent** (Qwen3-VL/Novita) for high-fidelity UI automation on both desktop and mobile. Developed by **Gokulbarath**.
 
 ![GNX CLI Demo](./imgs/img1.png)
-## Features
 
-GNX CLI can control your computer and phone like a real person would:
+## 🚀 Key Features
 
-- **Control Your Computer** - Take screenshots, click buttons, type text, open programs
-- **Control Your Phone** - Take screenshots, tap buttons, type text, open apps  
-- **Read & Write Files** - Create files, read content, edit text
-- **Search the Internet** - Find information online, visit websites
-- **Manage Tasks** - Create to-do lists, check them off, organize your work
-- **Advanced Actions** - Wait for things to load, use keyboard shortcuts, automate workflows
+- **🧠 Hybrid Intelligence:** Fast orchestrator LLM (Llama 4, Gemini, or GLM) plus specialized VLM (Qwen3-VL) for sight.
+- **👁️ Autonomous Vision Agent:** Sub-agent loop that can see screens, reason about UI, and act (click, swipe, type).
+- **🔌 MCP Support:** Works with the Model Context Protocol (GitHub, Filesystem, Memory servers).
+- **📱 Mobile Automation:** Deep ADB integration for taps, swipes, and text input.
+- **💻 Desktop Automation:** Mouse/keyboard control via PyAutoGUI with visual feedback loops.
+- **📁 Modular Tooling:** Atomic tools for file ops, web search, system control, and UI automation.
 
-
-## Mobile Demo
+## 📱 Mobile Demo
 
 <video controls width="700">
-    <source src="./imgs/GNX_CLI_MOBILE_DEMO.mov" type="video/quicktime">
-    Your browser does not support embedded video. [Download the demo](./imgs/GNX_CLI_MOBILE_DEMO.mov).
+	 <source src="./imgs/GNX_CLI_MOBILE_DEMO.mov" type="video/quicktime">
+	 Your browser does not support embedded video. [Download the demo](./imgs/GNX_CLI_MOBILE_DEMO.mov).
 </video>
 
 This clip shows GNX CLI running a full mobile automation sequence from the latest build.
 
-## Architecture
+## 🏗️ Architecture
 
 ![GNX Architecture](./imgs/architecture.png)
 ![GNX Sequence Flow](./imgs/sequence_flow.png)
@@ -36,8 +38,8 @@ This clip shows GNX CLI running a full mobile automation sequence from the lates
 │ 1. USER GOAL                                                │
 │    "Open calculator on desktop"                             │
 └────────────────┬────────────────────────────────────────────┘
-                 │
-                 ▼
+					  │
+					  ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ 2. LLAMA 4 SCOUT ENGINE (Main LLM)                          │
 │    - Understands user intent                                │
@@ -45,80 +47,115 @@ This clip shows GNX CLI running a full mobile automation sequence from the lates
 │    - Multimodal vision for screenshot analysis              │
 │    - Plans action sequence                                  │
 └────────────────┬────────────────────────────────────────────┘
-                 │
-                 ▼
+					  │
+					  ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ 3. SCREENSHOT CAPTURE                                       │
 │    - Takes current screen/phone screenshot                  │
 │    - Sends image directly to Llama 4 Scout                  │
 └────────────────┬────────────────────────────────────────────┘
-                 │
-                 ▼
+					  │
+					  ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ 4. NATIVE TOOL CALLING                                      │
 │    - Model decides which tools to use                       │
 │    - Returns structured tool calls                          │
 │    - Handles images natively (multimodal)                   │
 └────────────────┬────────────────────────────────────────────┘
-                 │
-                 ▼
+					  │
+					  ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ 5. ACTION EXECUTION                                         │
-│    - Click/tap at coordinates                              │
+│    - Click/tap at coordinates                               │
 │    - Type text                                              │
 │    - Press hotkeys                                          │
 │    - Swipe/drag                                             │
 └────────────────┬────────────────────────────────────────────┘
-                 │
-                 ▼
+					  │
+					  ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ 6. VERIFICATION LOOP                                        │
-│    - Take new screenshot                                   │
-│    - Check if goal achieved                                │
-│    - Continue or report success                            │
+│    - Take new screenshot                                    │
+│    - Check if goal achieved                                 │
+│    - Continue or report success                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
----
+### High-Level Routing
 
-## Installation
+```mermaid
+graph TD;
+	 User[User Input] --> Engine[GNX Engine];
+	 Engine -->|Selects Tool| Router{Tool Router};
+    
+	 subgraph "Standard Tools"
+	 Router -->|File Ops| Files[FileSystem / Search];
+	 Router -->|Web| Web[DuckDuckGo / Jina];
+	 Router -->|MCP| MCP[MCP Servers];
+	 end
+    
+	 subgraph "Automation & Vision"
+	 Router -->|Simple| Atomic[Atomic Actions];
+	 Atomic --> Desktop[Desktop Control];
+	 Atomic --> Mobile[Mobile/ADB];
+    
+	 Router -->|Complex UI Tasks| Handoff[activate_vision_agent];
+	 Handoff --> VisionLoop((Vision Agent Loop));
+	 end
+    
+	 Files --> Output[Result];
+	 Web --> Output;
+	 MCP --> Output;
+	 Desktop --> Output;
+	 Mobile --> Output;
+	 VisionLoop --> Output;
+    
+	 Output --> Engine;
+	 Engine --> User;
+```
+
+#### Vision Agent Loop
+When `activate_vision_agent` is called, the system switches to a VLM-driven feedback loop:
+
+```mermaid
+graph TD;
+	 Start([Task Received]) --> Capture[Capture High-Res Screenshot];
+	 Capture --> VLM[Qwen3-VL Analysis];
+    
+	 VLM -->|Reasoning + JSON| Decision{Decision};
+    
+	 Decision -->|Action| Executor[Execute Action];
+	 Executor -->|Wait for UI| Capture;
+    
+	 Decision -->|Terminate| Success([Task Complete]);
+	 Decision -->|Error| Fail([Report Failure]);
+```
+
+## 🛠️ Installation
 
 ### Requirements
 - Python 3.10+
 - Windows/Mac/Linux
-- For mobile: ADB (Android Debug Bridge) and connected Android device
+- For mobile: ADB (Android Debug Bridge) and a connected Android device
 
 ### Setup
 
 ```bash
-# Clone the repository
-git clone <repo-url>
+git clone https://github.com/Gokulbarath/GNX-CLI.git
 cd "GNX CLI"
 
-# Create virtual environment
 python -m venv .venv
+.venv\Scripts\activate  # Mac/Linux: source .venv/bin/activate
 
-# Activate venv
-# Windows:
-.venv\Scripts\activate
-# Mac/Linux:
-source .venv/bin/activate
-
-# Install dependencies
 pip install -r requirements.txt
 
-# Configure Environment
-# Copy the example environment file to .env
-# Windows:
-copy .env.example .env
-# Mac/Linux:
-cp .env.example .env
+# Configure environment
+copy .env.example .env  # Mac/Linux: cp .env.example .env
+```
 
----
+## 💻 Usage
 
-## Usage
-
-### Start GNX CLI
+Start the CLI:
 
 ```bash
 python main.py
@@ -126,12 +163,19 @@ python main.py
 
 ### Example Commands
 
-#### Desktop Automation
+1. General reasoning & files
+	- "List all python files in src/tools and tell me what they do."
+2. Web search
+	- "Search for the latest features in Python 3.13."
+3. Vision Agent (mobile)
+	- Ensure your Android device is connected via ADB.
+	- "Open Settings, find 'Display', and turn on Dark Mode." (Agent navigates, scrolls, and taps based on visual cues.)
+4. Vision Agent (desktop)
+	- "Open Calculator, calculate 55 * 12, and tell me the result."
+
+#### Desktop Automation (sample transcript)
 ```
 GNX: "Use computer use and open calculator"
-```
-Output:
-```
 ✓ computer_screenshot: Screenshot captured
 ✓ computer_control: Click on Start button (679, 1047)
 ✓ computer_control: Type "calculator"
@@ -139,22 +183,15 @@ Output:
 ✓ Task completed: Calculator opened successfully
 ```
 
-#### Mobile Automation
+#### Mobile Automation (sample transcript)
 ```
 GNX: "Open Settings on my phone"
-```
-Output:
-```
 ✓ mobile_devices: Connected devices found
 ✓ mobile_connect: Connected to device RZCX904D1QV
 ✓ mobile_screenshot: Screen captured
 ✓ mobile_control: Tap on Settings icon
 ✓ Task completed: Settings app opened
-
-
 ```
-
-
 
 #### File Operations
 ```
@@ -176,67 +213,42 @@ GNX: "Show my TODO list"
 GNX: "Mark the first task as complete"
 ```
 
----
+## ⚙️ Configuration
 
-## Configuration
-
-GNX CLI uses environment variables for configuration. You can set these in a `.env` file in the project root.
-
-### Environment Variables
+GNX CLI uses environment variables (set in `.env`).
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `GROQ_API_KEY` | API key for Groq models (Llama 4 Scout) | Yes |
-| `GOOGLE_API_KEY` | API key for Google Gemini models | No (fallback) |
-| `HF_TOKEN` | HuggingFace token for V_action vision model | Optional |
-| `ZHIPUAI_API_KEY` | API key for ZhipuAI's GLM-4.5 series (text-only, see [GLMinfo.md](GLMinfo.md)) | Yes |
-| `GNX_DEFAULT_PROVIDER` | Default LLM provider (`glm`, `groq`, or `gemini`; GLM is text-only—see [GLMinfo.md](GLMinfo.md)) | No (Default: `glm`) |
+| GROQ_API_KEY | API key for Groq models (Llama 4 Scout) | Yes |
+| GOOGLE_API_KEY | API key for Google Gemini models | No (fallback) |
+| HF_TOKEN | HuggingFace token for V_action vision model | Optional |
+| ZHIPUAI_API_KEY | API key for ZhipuAI's GLM-4.5 series (text-only, see GLMinfo.md) | Yes |
+| GNX_DEFAULT_PROVIDER | Default LLM provider (`glm`, `groq`, or `gemini`) | No (default: `glm`) |
 
-### Setting up .env
+Quick setup:
 
-1. Copy the example file:
-   ```bash
-   cp .env.example .env
-   ```
-2. Edit `.env` with your keys.
+```bash
+cp .env.example .env
+# edit .env with your keys
+```
 
----
+## 🔧 Tools Reference
 
-## Tools Reference
-
-### Computer Control
+### Desktop Control
 ```python
-# Take screenshot
 computer_screenshot()
-
-# Execute instruction based on screen
 computer_control(instruction="Click on the Start button")
-
-# Direct text input
 computer_type_text(text="hello world", press_enter=True)
-
-# Keyboard shortcuts
 computer_hotkey(keys="ctrl,c")
-
-# Wait for UI
 computer_wait(seconds=2.0)
 ```
 
 ### Mobile Control
 ```python
-# Check devices
 mobile_devices()
-
-# Connect to device
 mobile_connect(device_id="DEVICE_ID")
-
-# Take screenshot
 mobile_screenshot()
-
-# Execute instruction
 mobile_control(instruction="Tap on Settings icon")
-
-# Direct interaction
 mobile_tap(x=100, y=200)
 mobile_swipe(direction="up")
 mobile_button(button="back")
@@ -244,222 +256,121 @@ mobile_button(button="back")
 
 ### File Operations
 ```python
-# List directory
 ls(path="src")
-
-# Read file
 read_file(path="main.py")
-
-# Write file
 write_file(path="test.txt", content="Hello")
-
-# Edit file
 edit_file(path="test.txt", old="Hello", new="Hi")
-
-# Find files
 glob(pattern="**/*.py")
-
-# Search text
 grep(query="import", path="src")
 ```
 
----
-
-## Native Tool Calling Architecture
+## 🧭 Native Tool Calling
 
 GNX uses **native tool calling** with Llama 4 Scout:
 
-1. **Understanding** - Llama 4 Scout understands user intent and sees screenshots natively
-2. **Tool Selection** - Model decides which tools to call (native function calling)
-3. **Execution** - Tools are executed and results returned
-4. **Observation** - Analyzes results and continues or completes
+1. Understanding — Llama 4 Scout parses intent and visuals.
+2. Tool selection — Model decides which tool(s) to invoke.
+3. Execution — Tools run and return structured results.
+4. Observation — Model inspects results/screenshots and continues or finishes.
 
-The NativeToolAdapter provides intelligent tool orchestration with multimodal support.
-
----
-
-## Project Structure
+## 📂 Project Structure
 
 ```
 GNX CLI/
-├── main.py                 # Entry point
-├── requirements.txt        # Dependencies
-├── .gitignore             # Git ignore rules
-├── README.md              # This file
+├── main.py                     # Entry point
+├── requirements.txt            # Dependencies
+├── README.md                   # This file
+├── imgs/                       # Assets (demo, architecture, LAMx)
 ├── src/
-│   ├── gnx_engine/
-│   │   ├── engine.py      # Main GNX engine
-│   │   ├── adapters.py    # NativeToolAdapter for tool orchestration
-│   │   └── prompts.py     # System prompts for Llama 4 Scout
+│   ├── agents/
+│   │   └── vision/             # Vision agent loop & prompts
+│   ├── gnx_engine/             # Orchestrator, adapters, prompts
+│   ├── mcp/                    # Model Context Protocol client
 │   ├── tools/
-│   │   ├── base.py        # Base tool utilities
-│   │   ├── computer_use.py     # Desktop automation ✨ NEW
-│   │   ├── mobile_use.py       # Mobile automation ✨ NEW
-│   │   ├── file_ops.py    # File operations
-│   │   ├── filesystem.py  # Directory listing
-│   │   ├── system.py      # System utilities
-│   │   ├── search.py      # File search
-│   │   ├── todos.py       # TODO management
-│   │   └── web_search.py  # Web search
-│   ├── ui/
-│   │   └── display.py     # Rich terminal UI
-│   └── utils/
-│       └── token_counter.py # Token usage tracking
-├── .env.example           # Environment variables template (copy to .env)
-└── imgs/
-    ├── img1.png           # Demo image
-    ├── architecture.png   # ReAct architecture diagram
-    ├── sequence_flow.png  # Sequence/loop workflow diagram
-    └── LAMx.png           # LAMx project logo
+│   │   ├── desktop/            # Mouse/keyboard/screenshot
+│   │   ├── mobile/             # ADB/touch/system
+│   │   ├── handoff/            # Sub-agent triggers
+│   │   ├── file_ops.py         # File operations
+│   │   ├── filesystem.py       # Directory listing
+│   │   ├── system.py           # System utilities
+│   │   ├── search.py           # File search
+│   │   ├── todos.py            # TODO management
+│   │   ├── web_search.py       # Web search
+│   │   └── ui_automation.py    # UI automation helpers
+│   ├── ui/                     # Display utilities
+│   ├── utils/                  # Logging, token counting
+│   └── vision_client/          # VLM API client and types
+└── .env.example                # Environment template
 ```
 
-
-## Environment Template
-
-The `.env.example` file documents the configurable keys that GNX CLI reads at runtime. Copy it to `.env`, replace the placeholders with your actual API keys, and store the file alongside the project root (it is ignored by Git).
+## 🧾 Environment Template
 
 ```text
 # GNX CLI Environment Variables
-# Copy this file to .env and fill in your API keys
 
-# Groq API Key (for Llama 4 Scout - PRIMARY)
+# Groq API Key (primary orchestrator)
 GROQ_API_KEY=your_groq_api_key_here
 
 # Google Gemini API Key (fallback/alternative)
 GOOGLE_API_KEY=your_google_api_key_here
 
-# HuggingFace Token (for V_action vision model in computer_use)
+# HuggingFace Token (for V_action vision model)
 HF_TOKEN=your_huggingface_token_here
 
-# ZhipuAI API Key (GLM-4.5 text-only series, see GLMinfo.md)
+# ZhipuAI API Key (GLM-4.5 text-only series)
 ZHIPUAI_API_KEY=your_zhipuai_api_key_here
 
-# Default provider: "glm" (GLM-4 text-only, see GLMinfo.md) or alternatives "groq"/"gemini"
+# Default provider: glm | groq | gemini
 GNX_DEFAULT_PROVIDER=glm
 
-# Default model names (optional - will use defaults if not set)
+# Optional model overrides
 # GROQ_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
 # GEMINI_MODEL=gemini-1.5-flash
 # GLM_MODEL=glm-4.5
 ```
 
+## 🔑 Key Technologies
 
----
+- **Llama 4 Scout** — Multimodal LLM with native tool calling (128K context)
+- **LangChain** — Agent framework and tool management
+- **Groq** — Fast inference API for Llama 4 Scout
+- **Rich** — Terminal UI
+- **PyAutoGUI + MSS** — Desktop automation and screenshots
+- **ADB** — Mobile device control (via subprocess)
 
-## Key Technologies
+## 🩺 Troubleshooting
 
-- **Llama 4 Scout** - Multimodal LLM with native tool calling (128K context)
-- **LangChain** - Agent framework and tool management
-- **Groq** - Fast inference API for Llama 4 Scout
-- **Rich** - Beautiful terminal UI
-- **PyAutoGUI** - Desktop automation
-- **MSS** - Screenshot capture
-- **ADB** - Mobile device control (via subprocess)
+- "Could not import ddgs python package":
+  ```bash
+  pip install -U ddgs duckduckgo-search
+  ```
+- Mobile screenshot path errors: ensure the workspace path has no special characters, or quote it (`"C:\Users\...\GNX CLI"`).
+- Computer screenshot not working: verify display scaling and disable `pyautogui.FAILSAFE` if needed.
+- ADB not found: install Android SDK, add ADB to PATH, or set `ADB_EXE = "C:\\path\\to\\adb.exe"` in config.
 
----
+## 🗺️ Future Roadmap
 
-## Troubleshooting
 
-### Issue: "Could not import ddgs python package"
-```bash
-pip install -U ddgs duckduckgo-search
-```
-
-### Issue: Mobile screenshot fails with path error
-- Ensure workspace path doesn't have special characters
-- Or use quotes: `"C:\Users\...\GNX CLI"`
-
-### Issue: Computer screenshot not working
-- Ensure no display scaling or use appropriate resolution settings
-- Check pyautogui.FAILSAFE is disabled
-
-### Issue: ADB not found
-```bash
-# Install Android SDK
-# Add ADB to PATH
-# Or specify full path in mobile_use.py
-
-ADB_EXE = "C:\\path\\to\\adb.exe"
-```
-
----
-
-## Future Roadmap
-
-- [ ] Support for more LLMs (Claude, GPT-4V, etc.)
-- [ ] Browser automation (Selenium integration)
 - [ ] Video recording of actions
 - [ ] Multi-device coordination
 - [ ] Custom action recording and playback
 - [ ] Web UI dashboard
-- [ ] Docker containerization
 - [ ] Performance optimization and caching
-
----
-
-## Contributing
-
-Contributions welcome! Areas for improvement:
-- Better error handling and recovery
-- Additional action types (drag, scroll, etc.)
-- Support for more devices and platforms
-- Performance optimization
-
----
-
-## License
-
-MIT License - Feel free to use and modify
-
----
-
-## My Journey: The Real Story
-
-I was trying to build this AI agent for the last 2 months. Kept switching between different languages - Rust, Python, C++, Node.js. Finally came back to Python and accomplished everything that took 2 months of work... in literally a single day.
-
-### What Happened
-
-I don't know if I should be proud of my skills or be sad about how easy it was. Like, I spent 2 months on this. But nah, I'm not going to be sad. I'm taking it as experience - that's why I was able to do it in a single day.
-
-### The Reality
-
-Two months of switching languages, struggling with different ecosystems, hitting dead ends. Then one day, with Python and LangChain, everything just clicked:
-
-- `computer_use.py` - boom, desktop automation done
-- `mobile_use.py` - boom, mobile control done  
-- Updated the ReAct adapter with proper instructions
-- Integrated everything
-
-```
-GNX: "Use computer use and open calculator"
-✓ Screenshot captured
-✓ Start button clicked  
-✓ Calculator opened
-✓ SUCCESS
-```
-
-In one day.
-
-### The Truth
-
-Two months wasn't wasted. It was experience. Every failed attempt in Rust, every CMake fight in C++, every async confusion in Node.js - all of that taught me what works and what doesn't. When I sat down with Python, I already knew the patterns. I already understood the problem.
-
-That's why it was so fast.
-
-I took those 2 months of experience and built something in a day. That's not stupid. That's just how it works when you finally know what you're doing.
-
----
-
+- [ ] Personalization
 
 ## 🔗 Part of LAMx Project
 
-GNX CLI is a rewritten and evolved version of **[Axolot OS](https://github.com/gokul6350/Axolot-os)**, now optimized as a core component of the **LAMx** project - an integrated ecosystem for General AI-powered intelligence.
-
-
+GNX CLI is a rewritten and evolved version of **[Axolot OS](https://github.com/gokul6350/Axolot-os)**, now optimized as a core component of the **LAMx** project—an integrated ecosystem for general AI-powered intelligence.
 
 ![LAMx Logo](./imgs/LAMx.png)
 
-GNX CLI is a core component of the **LAMx** project - an integrated ecosystem for General AI-powered intelligence.
+## 🤝 Contributing
+
+Contributions are welcome! Please open an issue or submit a PR.
+
+## 📜 License
+
+MIT License — see the LICENSE file for details.
 
 ---
 
