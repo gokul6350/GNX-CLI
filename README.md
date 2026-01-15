@@ -8,7 +8,19 @@
 
 **GNX CLI** is a next-generation AI agent capable of perceiving and manipulating real-world interfaces. Built on a modular architecture, it combines **Native Tool Calling** (Llama 4 Scout/Groq) for rapid logic with a specialized **Vision Agent** (Qwen3-VL/Novita) for high-fidelity UI automation on both desktop and mobile. Developed by **Gokulbarath**.
 
-![GNX CLI Demo](./imgs/img1.png)
+## 📱 Mobile Demo
+
+
+https://github.com/user-attachments/assets/42a5fde6-f226-480d-ab10-94136493f4ac
+
+This clip shows GNX CLI running a full mobile automation sequence from the latest build.
+
+## 🖥️ Computer Demo
+
+
+https://github.com/user-attachments/assets/bec3e8a0-30ce-4096-829c-8e6ca0fb33cd
+
+
 
 ## 🚀 Key Features
 
@@ -19,69 +31,14 @@
 - **💻 Desktop Automation:** Mouse/keyboard control via PyAutoGUI with visual feedback loops.
 - **📁 Modular Tooling:** Atomic tools for file ops, web search, system control, and UI automation.
 
-## 📱 Mobile Demo
-
-
-https://github.com/user-attachments/assets/42a5fde6-f226-480d-ab10-94136493f4ac
-
-
-
-This clip shows GNX CLI running a full mobile automation sequence from the latest build.
 
 ## 🏗️ Architecture
 
 ![GNX Architecture](./imgs/architecture.png)
 ![GNX Sequence Flow](./imgs/sequence_flow.png)
 
-### Workflow: User Goal → Llama 4 Scout → Action Execution
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│ 1. USER GOAL                                                │
-│    "Open calculator on desktop"                             │
-└────────────────┬────────────────────────────────────────────┘
-					  │
-					  ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 2. LLAMA 4 SCOUT ENGINE (Main LLM)                          │
-│    - Understands user intent                                │
-│    - Native tool calling (no ReAct parsing needed)          │
-│    - Multimodal vision for screenshot analysis              │
-│    - Plans action sequence                                  │
-└────────────────┬────────────────────────────────────────────┘
-					  │
-					  ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 3. SCREENSHOT CAPTURE                                       │
-│    - Takes current screen/phone screenshot                  │
-│    - Sends image directly to Llama 4 Scout                  │
-└────────────────┬────────────────────────────────────────────┘
-					  │
-					  ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 4. NATIVE TOOL CALLING                                      │
-│    - Model decides which tools to use                       │
-│    - Returns structured tool calls                          │
-│    - Handles images natively (multimodal)                   │
-└────────────────┬────────────────────────────────────────────┘
-					  │
-					  ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 5. ACTION EXECUTION                                         │
-│    - Click/tap at coordinates                               │
-│    - Type text                                              │
-│    - Press hotkeys                                          │
-│    - Swipe/drag                                             │
-└────────────────┬────────────────────────────────────────────┘
-					  │
-					  ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 6. VERIFICATION LOOP                                        │
-│    - Take new screenshot                                    │
-│    - Check if goal achieved                                 │
-│    - Continue or report success                             │
-└─────────────────────────────────────────────────────────────┘
-```
+
 
 ### High-Level Routing
 
@@ -215,18 +172,6 @@ GNX: "Show my TODO list"
 GNX: "Mark the first task as complete"
 ```
 
-## ⚙️ Configuration
-
-GNX CLI uses environment variables (set in `.env`).
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| GROQ_API_KEY | API key for Groq models (Llama 4 Scout) | Yes |
-| GOOGLE_API_KEY | API key for Google Gemini models | No (fallback) |
-| HF_TOKEN | HuggingFace token for V_action vision model | Optional |
-| ZHIPUAI_API_KEY | API key for ZhipuAI's GLM-4.5 series (text-only, see GLMinfo.md) | Yes |
-| GNX_DEFAULT_PROVIDER | Default LLM provider (`glm`, `groq`, or `gemini`) | No (default: `glm`) |
-
 Quick setup:
 
 ```bash
@@ -234,46 +179,7 @@ cp .env.example .env
 # edit .env with your keys
 ```
 
-## 🔧 Tools Reference
 
-### Desktop Control
-```python
-computer_screenshot()
-computer_control(instruction="Click on the Start button")
-computer_type_text(text="hello world", press_enter=True)
-computer_hotkey(keys="ctrl,c")
-computer_wait(seconds=2.0)
-```
-
-### Mobile Control
-```python
-mobile_devices()
-mobile_connect(device_id="DEVICE_ID")
-mobile_screenshot()
-mobile_control(instruction="Tap on Settings icon")
-mobile_tap(x=100, y=200)
-mobile_swipe(direction="up")
-mobile_button(button="back")
-```
-
-### File Operations
-```python
-ls(path="src")
-read_file(path="main.py")
-write_file(path="test.txt", content="Hello")
-edit_file(path="test.txt", old="Hello", new="Hi")
-glob(pattern="**/*.py")
-grep(query="import", path="src")
-```
-
-## 🧭 Native Tool Calling
-
-GNX uses **native tool calling** with Llama 4 Scout:
-
-1. Understanding — Llama 4 Scout parses intent and visuals.
-2. Tool selection — Model decides which tool(s) to invoke.
-3. Execution — Tools run and return structured results.
-4. Observation — Model inspects results/screenshots and continues or finishes.
 
 ## 📂 Project Structure
 
@@ -331,31 +237,9 @@ GNX_DEFAULT_PROVIDER=glm
 # GLM_MODEL=glm-4.5
 ```
 
-## 🔑 Key Technologies
-
-- **Llama 4 Scout** — Multimodal LLM with native tool calling (128K context)
-- **LangChain** — Agent framework and tool management
-- **Groq** — Fast inference API for Llama 4 Scout
-- **Rich** — Terminal UI
-- **PyAutoGUI + MSS** — Desktop automation and screenshots
-- **ADB** — Mobile device control (via subprocess)
-
-## 🩺 Troubleshooting
-
-- "Could not import ddgs python package":
-  ```bash
-  pip install -U ddgs duckduckgo-search
-  ```
-- Mobile screenshot path errors: ensure the workspace path has no special characters, or quote it (`"C:\Users\...\GNX CLI"`).
-- Computer screenshot not working: verify display scaling and disable `pyautogui.FAILSAFE` if needed.
-- ADB not found: install Android SDK, add ADB to PATH, or set `ADB_EXE = "C:\\path\\to\\adb.exe"` in config.
 
 ## 🗺️ Future Roadmap
 
-
-- [ ] Video recording of actions
-- [ ] Multi-device coordination
-- [ ] Custom action recording and playback
 - [ ] Web UI dashboard
 - [ ] Performance optimization and caching
 - [ ] Personalization
