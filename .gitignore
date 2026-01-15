@@ -49,7 +49,7 @@ desktop_last.png
 mobile_last.png
 
 *.jpg
-*.jpeg
+
 
 # Test files
 test_file.txt
