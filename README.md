@@ -21,10 +21,10 @@
 
 ## 📱 Mobile Demo
 
-<video controls width="700">
-	 <source src="./imgs/GNX_CLI_MOBILE_DEMO.mov" type="video/quicktime">
-	 Your browser does not support embedded video. [Download the demo](./imgs/GNX_CLI_MOBILE_DEMO.mov).
-</video>
+
+https://github.com/user-attachments/assets/42a5fde6-f226-480d-ab10-94136493f4ac
+
+
 
 This clip shows GNX CLI running a full mobile automation sequence from the latest build.
 
