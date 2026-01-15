@@ -15,6 +15,15 @@ GNX CLI can control your computer and phone like a real person would:
 - **Advanced Actions** - Wait for things to load, use keyboard shortcuts, automate workflows
 
 
+## Mobile Demo
+
+<video controls width="700">
+    <source src="./imgs/GNX_CLI_MOBILE_DEMO.mov" type="video/quicktime">
+    Your browser does not support embedded video. [Download the demo](./imgs/GNX_CLI_MOBILE_DEMO.mov).
+</video>
+
+This clip shows GNX CLI running a full mobile automation sequence from the latest build.
+
 ## Architecture
 
 ![GNX Architecture](./imgs/architecture.png)
