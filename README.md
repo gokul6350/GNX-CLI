@@ -132,52 +132,8 @@ python main.py
 4. Vision Agent (desktop)
 	- "Open Calculator, calculate 55 * 12, and tell me the result."
 
-#### Desktop Automation (sample transcript)
-```
-GNX: "Use computer use and open calculator"
-✓ computer_screenshot: Screenshot captured
-✓ computer_control: Click on Start button (679, 1047)
-✓ computer_control: Type "calculator"
-✓ computer_control: Click on Calculator app (725, 491)
-✓ Task completed: Calculator opened successfully
-```
 
-#### Mobile Automation (sample transcript)
-```
-GNX: "Open Settings on my phone"
-✓ mobile_devices: Connected devices found
-✓ mobile_connect: Connected to device RZCX904D1QV
-✓ mobile_screenshot: Screen captured
-✓ mobile_control: Tap on Settings icon
-✓ Task completed: Settings app opened
-```
 
-#### File Operations
-```
-GNX: "List all Python files in src folder"
-GNX: "Read the contents of main.py"
-GNX: "Create a new file called notes.txt with content 'Hello World'"
-```
-
-#### Web Search
-```
-GNX: "Search for latest Python 3.13 features"
-GNX: "Fetch the content from github.com"
-```
-
-#### Task Management
-```
-GNX: "Create a TODO list with: Task 1, Task 2, Task 3"
-GNX: "Show my TODO list"
-GNX: "Mark the first task as complete"
-```
-
-Quick setup:
-
-```bash
-cp .env.example .env
-# edit .env with your keys
-```
 
 
 
