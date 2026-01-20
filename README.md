@@ -2,21 +2,23 @@
 
 ![Banner](./imgs/banner.jpeg)
 
-## Essential Project Badges
+
+	
 [![Stars](https://img.shields.io/github/stars/gokul6350/GNX-CLI?style=social)](https://github.com/gokul6350/GNX-CLI)
 [![Forks](https://img.shields.io/github/forks/gokul6350/GNX-CLI?style=social)](https://github.com/gokul6350/GNX-CLI)
 [![Issues](https://img.shields.io/github/issues/gokul6350/GNX-CLI)](https://github.com/gokul6350/GNX-CLI/issues)
 
-## AI Agent Theme Badges
+
 [![GNX-CLI](https://img.shields.io/badge/GNX-CLI-8A2BE2?style=for-the-badge&logo=robot&logoColor=white)]()
 [![AI Agent](https://img.shields.io/badge/AI_Agent-Next%20Gen-blueviolet?style=flat&logo=spark&logoColor=yellow)]()
 [![Platforms](https://img.shields.io/badge/Desktop%20%26%20Android-E91E63?style=flat&logo=android&logoColor=white)]()
 
-## Status & Tech Badges
+
 [![License](https://img.shields.io/github/license/gokul6350/GNX-CLI)](https://github.com/gokul6350/GNX-CLI/blob/main/LICENSE)
 ![Python](https://img.shields.io/badge/python-3.10+-blue.svg)
 ![Status](https://img.shields.io/badge/status-active-success.svg)
 [![Discussions](https://img.shields.io/badge/Discussions-007ACC?style=flat&logo=github&logoColor=white)](https://github.com/gokul6350/GNX-CLI/discussions)
+
 
 **GNX CLI** is a next-generation AI agent capable of perceiving and manipulating real-world interfaces. Built on a modular architecture, it combines **Native Tool Calling** (Llama 4 Scout/Groq) for rapid logic with a specialized **Vision Agent** (Qwen3-VL/Novita) for high-fidelity UI automation on both desktop and mobile. Developed by **Gokulbarath**.
 
