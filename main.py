@@ -100,6 +100,7 @@ def handle_command(cmd_str, engine):
         table.add_row("/save <name>", "Save current chat with a name")
         table.add_row("/resume <name>", "Resume a saved chat")
         table.add_row("/chats", "List all saved chats")
+        table.add_row("/memory", "Show memory OS stats and analytics")
         table.add_row("!<cmd>", "Run shell command (e.g., !dir)")
         table.add_row("/exit", "Exit the CLI")
         console.print(table)
@@ -130,6 +131,19 @@ def handle_command(cmd_str, engine):
         list_saved_chats()
     elif cmd == "/tokens":
         show_token_stats(engine)
+    elif cmd == "/memory":
+        # Show memory stats and analytics
+        stats = engine.memory_os.get_stats()
+        console.print("[bold]Memory OS Stats:[/bold]")
+        console.print(f"  [cyan]Hot Tier:[/cyan] {stats['hot_size']} items")
+        console.print(f"  [yellow]Warm Tier:[/yellow] {stats['warm_size']} memories")
+        console.print(f"  [blue]Cold Tier:[/blue] {stats['cold_size']} archived")
+        console.print(f"  [dim]Total:[/dim] {stats['total_memories']} long-term memories")
+        
+        # Show analytics if available
+        if engine.memory_os.analytics:
+            console.print("")
+            engine.memory_os.print_analytics()
     else:
         console.print(f"[red]Unknown command: {cmd}[/red]")
         console.print("[dim]Type /help for available commands[/dim]")

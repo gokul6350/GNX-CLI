@@ -16,6 +16,10 @@ from src.tools.ui_automation import UI_AUTOMATION_TOOLS
 from src.utils.token_counter import count_messages_tokens
 from src.utils.logger_client import history_logger
 
+# Memory and Token Optimizer imports
+from src.memory import AdvancedMemoryOS, MemoryAnalytics
+from src.token_optimizer import TokenOptimizer, OptimizationStrategy
+
 # New modular tool imports
 from src.tools.desktop import DESKTOP_TOOLS
 from src.tools.mobile import MOBILE_TOOLS
@@ -96,6 +100,18 @@ class GNXEngine:
         self.chat_history = []
         self.tokens_used_this_minute = 0
         self.last_token_reset = time.time()
+        
+        # === NEW: Memory OS and Token Optimizer ===
+        # Initialize Memory OS for unlimited memory
+        self.memory_os = AdvancedMemoryOS(
+            llm=self.llm,
+            max_token_limit=8000,  # Hot tier limit
+            # embedding_provider auto-detects: gemini > openai > mock
+            enable_analytics=True,
+        )
+        
+        # Initialize Token Optimizer
+        self.token_optimizer = TokenOptimizer()
     
     def _create_llm(self):
         """Create the LLM instance based on current provider and model."""
@@ -316,6 +332,32 @@ class GNXEngine:
             messages = list(self.chat_history)
             messages.append(HumanMessage(content=user_input))
             
+            # === NEW: Retrieve relevant context from Memory OS ===
+            # This adds long-term memory context to the conversation
+            if self.memory_os.warm.size() > 0:
+                memory_context = self.memory_os.retrieve_context(
+                    query=user_input,
+                    top_k=3,
+                    include_warm=True,
+                    include_cold=False,
+                )
+                warm_memories = memory_context.get("warm_context", [])
+                if warm_memories:
+                    # Inject memory context as system context
+                    memory_hint = (
+                        "[Memory Context]\\n" +
+                        "\\n---\\n".join(warm_memories[:3])
+                    )
+                    messages.insert(0, HumanMessage(content=memory_hint))
+            
+            # === NEW: Apply Token Optimization ===
+            messages, opt_result = self.token_optimizer.optimize(
+                messages,
+                strategy=OptimizationStrategy.ADAPTIVE,
+            )
+            if opt_result.tokens_saved > 0:
+                logger.debug(f"Token optimization: {opt_result}")
+            
             # Check token quota
             can_proceed, quota_msg = self._check_token_quota(messages)
             if not can_proceed:
@@ -331,6 +373,10 @@ class GNXEngine:
             # Get the final response (last message)
             last_message = full_conversation[-1]
             final_content = last_message.content if hasattr(last_message, 'content') else str(last_message)
+            
+            # === NEW: Process turn with Memory OS ===
+            # This stores the interaction and handles Hot -> Warm migration
+            self.memory_os.process_turn(user_input, final_content)
             
             # Log Final Response
             history_logger.log("ai", final_content, is_context=True)
