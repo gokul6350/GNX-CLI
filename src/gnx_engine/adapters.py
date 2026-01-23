@@ -16,8 +16,9 @@ except ImportError:
     VISION_FOR_MAIN_AI = True
 
 # Configure logging to file
+os.makedirs('logs', exist_ok=True)
 logging.basicConfig(
-    filename='app0.log',
+    filename=f'logs/{history_logger.session_id}.log',
     level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     force=True

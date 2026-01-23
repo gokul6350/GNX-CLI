@@ -41,6 +41,7 @@ env/
 # Logs
 *.log
 app0.log
+logs/
 
 # Screenshots and temp files
 desktop_screenshot.png
