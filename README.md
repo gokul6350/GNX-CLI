@@ -108,7 +108,7 @@ graph TD;
 
 ### Requirements
 - Python 3.10+
-- Windows/Mac/Linux
+- Windows
 - For mobile: ADB (Android Debug Bridge) and a connected Android device
 
 ### Setup
@@ -118,12 +118,11 @@ git clone https://github.com/Gokulbarath/GNX-CLI.git
 cd "GNX CLI"
 
 python -m venv .venv
-.venv\Scripts\activate  # Mac/Linux: source .venv/bin/activate
-
+.venv\Scripts\activate  
 pip install -r requirements.txt
 
 # Configure environment
-copy .env.example .env  # Mac/Linux: cp .env.example .env
+copy .env.example .env  
 ```
 
 ## 💻 Usage
